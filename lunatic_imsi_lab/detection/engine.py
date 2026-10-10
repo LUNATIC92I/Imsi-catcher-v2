@@ -38,6 +38,13 @@ class Assessment:
     ISOLATED_INDICATORS = "ISOLATED_INDICATORS"
     CONVERGENT_INDICATORS = "CONVERGENT_INDICATORS"
 
+    LABEL = {
+        INSUFFICIENT_DATA: "Données insuffisantes",
+        NO_INDICATOR: "Aucun indicateur",
+        ISOLATED_INDICATORS: "Indicateurs isolés",
+        CONVERGENT_INDICATORS: "Indicateurs convergents",
+    }
+
     TEXT = {
         INSUFFICIENT_DATA: "Données insuffisantes pour conclure. Étendre la période de "
                            "référence et la collecte avant toute interprétation.",

@@ -1,0 +1,87 @@
+# Bilan des fonctionnalités opérationnelles et des limitations
+
+Version 0.1.0 — état vérifié par la suite de tests (`python -m pytest`, 134 tests) et par
+l'exécution de l'interface en mode hors écran.
+
+Légende : ✅ opérationnel et testé · 🟡 implémenté, non validé sur matériel réel ·
+⛔ volontairement exclu.
+
+## Fonctionnalités
+
+| Domaine | Fonction | État | Preuve / remarque |
+|---|---|---|---|
+| Tableau de bord | État système, équipements, technologies, bandes, puissance, changements de cellule, anomalies, historique des analyses, confiance des alertes, derniers rapports | ✅ | `tests/test_gui.py` |
+| Analyse radio | Visualisation du spectre, cascade, émissions (fréquence centrale, largeur, puissance de canal, SNR, bande) | ✅ | `TestSpectrum` |
+| | Comparaison de balayages successifs, variations temporelles inhabituelles | ✅ | `test_compare_*`, `test_power_variations` |
+| | Enregistrement des balayages | ✅ | `TestDatabase::test_sweeps_roundtrip` |
+| | Acquisition SoapySDR (RTL-SDR, Airspy, HackRF/USRP en RX…) | 🟡 | Code de réception présent ; **non testé sur matériel** dans l'environnement de développement (aucun SDR, bindings SoapySDR absents). Le mode « indisponible » est testé. |
+| Cellules | Import CSV/JSON (alias, `;`/`,`/tab, virgule décimale, epoch, fuseaux), technologie, CI, MCC/MNC, LAC/TAC, canal→fréquence, puissance, qualité, horodatages, source et méthode | ✅ | `TestImporter` |
+| | Filtre des identifiants personnels | ✅ | `test_privacy_filter_drops_identifiers` |
+| | Connexion directe à un modem en mode diagnostic | ⛔ | Hors périmètre : l'import passe par les exports d'outils autorisés. |
+| Détection | 10 règles (R01–R10), alertes complètes (ID, date, sources, règles, priorité, confiance, explications, faux positifs, vérifications) | ✅ | `TestRules`, `TestEngine` |
+| | Plafonnement des indicateurs isolés, prise en compte des données insuffisantes | ✅ | `test_single_indicator_is_capped`, `test_insufficient_*` |
+| | Scénarios légitimes sans alerte significative ; anomalie synthétique convergente | ✅ | `TestScenarios` |
+| Simulation | 6 scénarios paramétrables, reproductibles (graine), vérité terrain, spectres synthétiques, marquage SIMULATION | ✅ | `test_seed_reproducibility`, `test_all_simulated_data_is_labelled` |
+| Corrélation | Chronologie, regroupement, comparaison à la référence, persistant/ponctuel, export CSV/JSON avec provenance | ✅ | `TestCorrelation` |
+| Cartographie | Points de mesure, horodatages, niveaux, alertes, GPS vs estimé, hors ligne, GeoJSON | ✅ | `TestMapping` |
+| Rapports | PDF et HTML, 10 sections, faits / hypothèses séparés, aucune conclusion abusive | ✅ | `TestReports`, `examples/exemple_rapport.pdf` |
+| Sécurité | Journal d'audit chaîné, RBAC, protection des imports, suppression contrôlée | ✅ | `TestRbacAuditDeletion`, `TestFileProtection` |
+| IHM | 10 pages, filtres, tableaux triables, graphiques interactifs, notifications, progression | ✅ | `tests/test_gui.py` (hors écran) |
+| Fonctions offensives | Fausse station de base, interception, brouillage, émission, suivi | ⛔ | Exclues par conception ; `test_receive_only_interface`. |
+
+## Limitations connues
+
+### Analyse et détection
+- Les règles sont **heuristiques** ; leurs seuils (12 dB, 20 dB, −70 dBm, rayons de cellule,
+  durées) sont génériques et doivent être ajustés à chaque environnement. Les poids ont été
+  calibrés sur les scénarios synthétiques, **pas sur des données de terrain**.
+- Seuls les paramètres exposés par l'outil source sont analysés. Les indicateurs
+  protocolaires (algorithme de chiffrement négocié, demandes d'identité, rejets
+  d'enregistrement…) ne sont pas accessibles par l'import d'observations de cellules et ne
+  sont **pas** évalués.
+- La détection de cellules inconnues dépend entièrement de la qualité de la référence.
+- R07 (spatial) ne s'appuie que sur les positions de l'équipement de mesure ; l'outil
+  n'estime pas la position des émetteurs.
+- Les variations spectrales (R10) ne sont pas rattachées à une cellule précise.
+
+### Radio
+- Puissances SDR en dBFS tant qu'un offset d'étalonnage n'est pas saisi ; l'offset dépend
+  du gain et de la fréquence.
+- Le balayage SoapySDR concatène des fenêtres de 80 % de la bande échantillonnée ; les
+  raies DC / images propres à certains récepteurs ne sont pas filtrées.
+- Les conversions EARFCN couvrent les bandes LTE usuelles (1, 2, 3, 4, 5, 7, 8, 12, 13, 20,
+  28, 38, 40, 41) ; UARFCN sans décalage de bande ; ARFCN 512–810 interprétés en DCS 1800
+  par défaut (option PCS 1900 dans l'API).
+- GNU Radio n'est pas utilisé ; PyQtGraph non plus (Matplotlib suffit aux volumes traités).
+
+### Simulation
+- Modèle de propagation simplifié (pas de multi-trajets réalistes, pas d'interférences).
+  Les scénarios servent à éprouver la logique du moteur, pas à prédire des performances
+  réelles de détection.
+
+### Sécurité
+- Le RBAC est **local** : le rôle provient de la configuration ou de la ligne de commande,
+  sans authentification. Il protège contre les erreurs de manipulation, pas contre un
+  utilisateur disposant des droits du système sur la base SQLite.
+- Le journal d'audit détecte les altérations de la chaîne mais un administrateur système
+  peut supprimer la base entière ; exporter régulièrement l'empreinte de la dernière
+  entrée si une preuve externe est nécessaire.
+- L'écrasement avant suppression est « au mieux » : il n'offre pas de garantie sur SSD,
+  systèmes de fichiers journalisés ou copies de sauvegarde. Préférer un chiffrement
+  intégral du disque.
+- La base n'est pas chiffrée par l'application.
+
+### Cartographie
+- Pas de fond de carte (fonctionnement hors ligne) : projection locale en km. L'export
+  GeoJSON permet la superposition dans un SIG hors ligne.
+
+### Interface
+- Les opérations longues s'exécutent une par une en arrière-plan ; l'acquisition continue
+  s'exécute dans le thread graphique (un balayage SDR lent peut brièvement figer l'IHM).
+- Interface en français uniquement.
+
+## Pistes d'évolution
+- Import de formats d'outils de diagnostic spécifiques (profils de mappage prédéfinis).
+- Seuils de règles configurables depuis l'IHM et profils d'environnement.
+- Étalonnage SDR assisté par fréquence.
+- Authentification locale et chiffrement de la base.

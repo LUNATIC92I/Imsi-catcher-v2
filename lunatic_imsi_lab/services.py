@@ -65,6 +65,14 @@ class Lab:
         self.user.require(Permission.SIMULATE)
         res = simulate(params)
         tag = f"SIMULATION-{params.scenario.value}-{params.seed}"
+        # Une nouvelle exécution remplace la précédente (jamais de mélange de deux runs).
+        # Seuls des jeux marqués SIMULATION peuvent être remplacés ainsi.
+        existing = {d.name: d for d in self.db.list_datasets()}
+        for name in (tag, tag + "-ref"):
+            if name in existing:
+                if not existing[name].is_simulation:
+                    raise ValueError(f"le jeu « {name} » contient des mesures réelles")
+                self.db.delete_dataset_rows(name)
         self.db.ensure_dataset(tag + "-ref", is_simulation=True,
                                description="Référence synthétique")
         self.db.ensure_dataset(tag, is_simulation=True, description="Observations synthétiques")
@@ -74,6 +82,10 @@ class Lab:
         if with_spectrum:
             sc = (SpectrumScenario.with_anomaly(params.seed) if params.scenario.value ==
                   "synthetic_anomaly" else SpectrumScenario.default(params.seed))
+            # Balayages répartis sur la même période que les observations de cellules.
+            if res.observations:
+                sc.start = res.observations[0].timestamp
+                sc.step_s = params.duration_minutes * 60 / max(n_sweeps, 1)
             sweeps = sc.series(n_sweeps)
             for s in sweeps:
                 self.db.add_sweep(s, tag)

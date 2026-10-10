@@ -207,3 +207,37 @@ class TestServicesAndCli:
         assert "imsi" in out and "imei" in out and "001010000000001" not in out
         manifest = json.loads((tmp_path / "syn" / "MANIFEST.json").read_text())
         assert manifest["label"] == "SIMULATION" and len(manifest["datasets"]) == 6
+
+
+class TestFrames:
+    def test_cell_statistics(self, anomaly):
+        from lunatic_imsi_lab.correlation.frames import cell_statistics
+        r, _ = anomaly
+        st = cell_statistics(r.observations)
+        assert len(st) == 7 and int(st["count"].sum()) == len(r.observations)
+        row = st.iloc[0]
+        assert row.rssi_min <= row.rssi_median <= row.rssi_max
+        # moyenne énergétique ≥ moyenne arithmétique en dB (inégalité de Jensen)
+        cell_obs = [o.rssi_dbm for o in r.observations if o.cell_label == st.index[0]]
+        assert row.rssi_energy_mean >= sum(cell_obs) / len(cell_obs) - 1e-9
+
+    def test_resample_and_empty(self, anomaly):
+        from lunatic_imsi_lab.correlation.frames import (cell_statistics, resample_power,
+                                                         to_dataframe)
+        r, _ = anomaly
+        rs = resample_power(r.observations, "10min")
+        assert rs.shape[1] == 7 and len(rs) == 12  # 2 h / 10 min
+        assert to_dataframe([]).empty and cell_statistics([]).empty
+        assert resample_power([]).empty
+
+
+def test_simulation_rerun_replaces_dataset_and_is_deterministic(tmp_config):
+    from lunatic_imsi_lab.simulation.cells import simulate
+    p = SimulationParams(scenario=Scenario.NORMAL, baseline_hours=0.5, duration_minutes=20)
+    assert [o.id for o in simulate(p).observations] == [o.id for o in simulate(p).observations]
+    lab = Lab(tmp_config)
+    lab.run_simulation(p, with_spectrum=False)
+    n1 = lab.db.count_observations("SIMULATION-normal-42")
+    lab.run_simulation(SimulationParams(scenario=Scenario.NORMAL, baseline_hours=0.5,
+                                        duration_minutes=10), with_spectrum=False)
+    assert lab.db.count_observations("SIMULATION-normal-42") == n1 // 2

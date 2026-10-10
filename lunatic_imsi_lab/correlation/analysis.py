@@ -212,3 +212,63 @@ def alerts_to_csv(alerts: Sequence[Alert]) -> str:
                     round(a.confidence_score, 3), a.severity.value, a.summary,
                     "|".join(a.sources), a.is_simulation])
     return buf.getvalue()
+
+
+@dataclass
+class CellSummary:
+    cell_key: tuple
+    technology: str
+    mcc: int | None
+    mnc: int | None
+    area_code: int | None
+    cell_id: int | None
+    channel: int | None
+    frequency_mhz: float | None
+    pci: int | None
+    count: int
+    rssi_median: float | None
+    rssi_min: float | None
+    rssi_max: float | None
+    quality_median: float | None
+    first_seen: datetime
+    last_seen: datetime
+    serving_count: int
+    sources: str
+    methods: str
+    in_baseline: bool | None    # None : aucune référence chargée
+    is_simulation: bool
+
+
+def summarize_cells(observations: Sequence[CellObservation],
+                    baseline: Baseline | None = None) -> list[CellSummary]:
+    per: dict[tuple, list[CellObservation]] = defaultdict(list)
+    for o in observations:
+        per[o.cell_key].append(o)
+    out = []
+    for key, items in per.items():
+        items.sort(key=lambda o: o.timestamp)
+        r = sorted(o.rssi_dbm for o in items if o.rssi_dbm is not None)
+        q = sorted(o.quality_db for o in items if o.quality_db is not None)
+        o0 = items[0]
+        out.append(CellSummary(
+            cell_key=key, technology=o0.technology.value, mcc=o0.mcc, mnc=o0.mnc,
+            area_code=o0.area_code, cell_id=o0.cell_id, channel=o0.channel,
+            frequency_mhz=o0.frequency_mhz, pci=o0.pci, count=len(items),
+            rssi_median=r[len(r) // 2] if r else None, rssi_min=r[0] if r else None,
+            rssi_max=r[-1] if r else None, quality_median=q[len(q) // 2] if q else None,
+            first_seen=items[0].timestamp, last_seen=items[-1].timestamp,
+            serving_count=sum(o.serving for o in items),
+            sources=", ".join(sorted({o.provenance.label for o in items})),
+            methods=", ".join(sorted({o.provenance.method for o in items})),
+            in_baseline=None if baseline is None or baseline.is_empty else key in baseline.cells,
+            is_simulation=any(o.provenance.is_simulation for o in items)))
+    return sorted(out, key=lambda c: -c.count)
+
+
+def serving_changes(observations: Sequence[CellObservation]) -> int:
+    prev, n = None, 0
+    for o in sorted((o for o in observations if o.serving), key=lambda o: o.timestamp):
+        if prev is not None and prev != o.cell_key:
+            n += 1
+        prev = o.cell_key
+    return n

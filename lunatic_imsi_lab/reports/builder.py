@@ -17,9 +17,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Sequence
 
+import pandas as pd
+
 from lunatic_imsi_lab import APP_NAME, SIMULATION_LABEL, __version__
 from lunatic_imsi_lab.core.models import CellObservation, SpectrumSweep
 from lunatic_imsi_lab.core.timeutils import utcnow
+from lunatic_imsi_lab.correlation.frames import cell_statistics
 from lunatic_imsi_lab.detection.engine import AnalysisResult, Assessment
 from lunatic_imsi_lab.detection.rules import DEFAULT_RULES
 from lunatic_imsi_lab.radio.spectrum import detect_emissions
@@ -131,21 +134,20 @@ def build_report(inp: ReportInput) -> ReportContent:
         if params else None, paragraphs=[] if params else ["Aucun paramètre consigné."]))
 
     # 5. Faits observés
-    per_cell: dict[tuple, list[CellObservation]] = {}
-    for o in obs:
-        per_cell.setdefault(o.cell_key, []).append(o)
-    table = [["Cellule", "Canal", "Fréq. (MHz)", "Obs.", "P. min/méd/max (dBm)", "Première",
-              "Dernière"]]
-    for key, items in sorted(per_cell.items(), key=lambda kv: -len(kv[1]))[:40]:
-        r = sorted(o.rssi_dbm for o in items if o.rssi_dbm is not None)
-        table.append([items[0].cell_label, str(items[0].channel),
-                      f"{items[0].frequency_mhz:.1f}" if items[0].frequency_mhz else "n/d",
-                      str(len(items)),
-                      f"{r[0]:.0f} / {r[len(r)//2]:.0f} / {r[-1]:.0f}" if r else "n/d",
-                      f"{items[0].timestamp:%H:%M:%S}", f"{items[-1].timestamp:%H:%M:%S}"])
+    stats = cell_statistics(obs)
+    table = [["Cellule", "Canal", "Fréq. (MHz)", "Obs.", "P. min/méd/max (dBm)",
+              "P. moy. énerg. (dBm)", "Première", "Dernière"]]
+    for cell, row in stats.head(40).iterrows():
+        def n(v, fmt=".0f"):
+            return "n/d" if pd.isna(v) else format(v, fmt)
+        table.append([cell, n(row.channel, ".0f"), n(row.frequency_mhz, ".1f"),
+                      str(int(row["count"])),
+                      f"{n(row.rssi_min)} / {n(row.rssi_median)} / {n(row.rssi_max)}",
+                      n(row.rssi_energy_mean, ".1f"), f"{row.first_seen:%H:%M:%S}",
+                      f"{row.last_seen:%H:%M:%S}"])
     tech = Counter(o.technology.value for o in obs)
     radio = ReportSection("5. Observations radio (faits observés)", paragraphs=[
-        f"{len(obs)} observations, {len(per_cell)} cellules distinctes. Technologies : "
+        f"{len(obs)} observations, {len(stats)} cellules distinctes. Technologies : "
         + (", ".join(f"{t} ({n})" for t, n in tech.most_common()) or "aucune") + "."],
         table=table if len(table) > 1 else None)
     if inp.sweeps:

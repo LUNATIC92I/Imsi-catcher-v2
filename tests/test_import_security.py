@@ -187,3 +187,16 @@ class TestRbacAuditDeletion:
         actions = [e.action for e in audit.entries()]
         assert actions[0] == "delete_dataset" and "import_observations" in actions
         assert audit.verify()[0]
+
+
+def test_config_roundtrip(tmp_path):
+    from lunatic_imsi_lab.config import AppConfig, Band, DeviceConfig
+    cfg = AppConfig(data_dir=str(tmp_path))
+    cfg.devices.append(DeviceConfig("RTL", "soapy", "driver=rtlsdr", calibration_offset_db=-12.5))
+    cfg.bands.append(Band("B28", "LTE", 758, 803))
+    cfg.authorization_ref = "AUT-9"
+    back = AppConfig.load(cfg.save())
+    assert back.devices[-1].calibration_offset_db == -12.5
+    assert back.band_for(780).name == "B28" and back.authorization_ref == "AUT-9"
+    assert back.local_only and not back.store_raw_iq
+    assert AppConfig.load(tmp_path / "absent.json").bands

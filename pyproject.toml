@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lunatic-imsi-lab"
+version = "0.1.0"
+description = "Plateforme défensive d'analyse des menaces sur les réseaux cellulaires (réception seule)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "numpy>=1.26", "scipy>=1.11", "pandas>=2.1", "matplotlib>=3.8",
+  "SQLAlchemy>=2.0", "PySide6>=6.6", "reportlab>=4.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
+[project.scripts]
+lunatic-imsi-lab = "lunatic_imsi_lab.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["lunatic_imsi_lab*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

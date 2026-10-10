@@ -42,6 +42,7 @@ class DeviceConfig:
     sample_rate: float = 2.4e6
     gain_db: float = 30.0
     enabled: bool = True
+    calibration_offset_db: float = 0.0   # dBm = dBFS + offset (0 : non étalonné)
 
 
 @dataclass

@@ -180,7 +180,10 @@ class Database:
         url = "sqlite://" if str(path) == ":memory:" else f"sqlite:///{Path(path)}"
         if str(path) != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.engine = create_engine(url, future=True)
+        # Les opérations longues de l'IHM s'exécutent dans un thread de travail
+        # (une seule à la fois) : la connexion SQLite doit pouvoir changer de thread.
+        self.engine = create_engine(url, future=True,
+                                    connect_args={"check_same_thread": False})
         Base.metadata.create_all(self.engine)
         self._session = sessionmaker(self.engine, expire_on_commit=False)
 

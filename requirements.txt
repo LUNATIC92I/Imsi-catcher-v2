@@ -1,0 +1,14 @@
+# LUNATIC IMSI LAB — dépendances (Python 3.12+ ; testé avec 3.12/3.13)
+numpy>=1.26
+scipy>=1.11
+pandas>=2.1
+matplotlib>=3.8
+SQLAlchemy>=2.0
+PySide6>=6.6
+reportlab>=4.0
+# Tests
+pytest>=8.0
+# Optionnel — récepteurs SDR (réception seule) :
+#   SoapySDR n'est pas distribué sur PyPI ; installer les bindings Python via le
+#   gestionnaire de paquets du système (ex. apt install python3-soapysdr soapysdr-module-rtlsdr)
+#   ou via conda-forge (conda install -c conda-forge soapysdr soapysdr-module-rtlsdr).

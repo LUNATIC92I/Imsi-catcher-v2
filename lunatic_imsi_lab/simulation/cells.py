@@ -7,6 +7,8 @@ nombres* : il n'émet aucun signal et n'émule aucune station de base.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -58,6 +60,9 @@ class SimulationParams:
     anomaly_duration_fraction: float = 0.25
     anomaly_power_dbm: float = -50.0
     power_jump_db: float = 18.0
+
+    def __post_init__(self) -> None:
+        self.scenario = Scenario(self.scenario)  # accepte aussi la valeur texte
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -276,6 +281,11 @@ def simulate(params: SimulationParams | None = None) -> SimulationResult:
             return tick
 
     observations = _collect(p, sites, obs_start, p.duration_minutes, rng, prov, mutate)
+    # Identifiants déterministes : mêmes paramètres → mêmes fichiers, octet pour octet.
+    digest = hashlib.sha1(json.dumps(p.to_dict(), sort_keys=True).encode()).hexdigest()[:8]
+    for prefix, items in (("b", baseline), ("o", observations)):
+        for i, o in enumerate(items):
+            o.id = f"sim{digest}{prefix}{i:06d}"
     if p.scenario == Scenario.NORMAL:
         events.append("Environnement stable : aucune anomalie injectée.")
     return SimulationResult(
