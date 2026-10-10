@@ -112,10 +112,13 @@ def _resolve_columns(columns: Iterable[str],
     resolved: dict[str, str] = {}
     if mapping:
         for canonical, src in mapping.items():
+            if canonical not in FIELD_ALIASES:
+                raise ValueError(f"champ de destination inconnu dans le mappage : {canonical}")
             if is_forbidden(src):
                 raise ValueError(f"le mappage vers une colonne interdite ({src}) est refusé")
-            if src in cols:
-                resolved[canonical] = src
+            # Comparaison tolérante (casse, espaces, tirets).
+            if _norm(src) in allowed:
+                resolved[canonical] = allowed[_norm(src)]
     for canonical, aliases in FIELD_ALIASES.items():
         if canonical in resolved:
             continue
@@ -128,7 +131,14 @@ def _resolve_columns(columns: Iterable[str],
 
 def parse_records(records: list[dict[str, Any]], provenance: Provenance,
                   source_name: str = "records", mapping: dict[str, str] | None = None,
-                  assume_tz: str | None = None) -> tuple[list[CellObservation], ImportReport]:
+                  assume_tz: str | None = None, constants: dict[str, Any] | None = None
+                  ) -> tuple[list[CellObservation], ImportReport]:
+    """``constants`` fournit une valeur fixe pour un champ absent du fichier
+    (ex. ``{"technology": "LTE"}`` pour un export mono-technologie)."""
+    constants = dict(constants or {})
+    bad = [k for k in constants if k not in FIELD_ALIASES]
+    if bad:
+        raise ValueError(f"constantes inconnues : {bad}")
     report = ImportReport(source_name=source_name)
     if not records:
         report.warnings.append("aucune ligne à importer")
@@ -143,7 +153,8 @@ def parse_records(records: list[dict[str, Any]], provenance: Provenance,
     if forbidden:
         report.warnings.append(
             "colonnes d'identifiants personnels supprimées sans lecture : " + ", ".join(forbidden))
-    missing = [f for f in ("timestamp", "technology") if f not in resolved]
+    missing = [f for f in ("timestamp", "technology")
+               if f not in resolved and f not in constants]
     if missing:
         raise ValueError(f"colonnes obligatoires absentes : {', '.join(missing)}")
     bcast_cols = [c for c in columns if _norm(c).startswith(BROADCAST_PREFIX) and c not in forbidden]
@@ -168,7 +179,7 @@ def parse_records(records: list[dict[str, Any]], provenance: Provenance,
 
         def g(name: str) -> Any:
             col = resolved.get(name)
-            return rec.get(col) if col else None
+            return rec.get(col) if col else constants.get(name)
 
         try:
             ts = to_utc(g("timestamp"), assume_tz)
@@ -227,34 +238,56 @@ def parse_records(records: list[dict[str, Any]], provenance: Provenance,
 
 
 def import_csv_text(text: str, provenance: Provenance, source_name: str = "csv",
-                    mapping: dict[str, str] | None = None,
-                    assume_tz: str | None = None) -> tuple[list[CellObservation], ImportReport]:
+                    mapping: dict[str, str] | None = None, assume_tz: str | None = None,
+                    constants: dict[str, Any] | None = None
+                    ) -> tuple[list[CellObservation], ImportReport]:
     sample = text[:4096]
     try:
         dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
     except csv.Error:
         dialect = csv.excel
     reader = csv.DictReader(io.StringIO(text), dialect=dialect)
-    return parse_records(list(reader), provenance, source_name, mapping, assume_tz)
+    return parse_records(list(reader), provenance, source_name, mapping, assume_tz, constants)
 
 
 def import_json_text(text: str, provenance: Provenance, source_name: str = "json",
-                     mapping: dict[str, str] | None = None,
-                     assume_tz: str | None = None) -> tuple[list[CellObservation], ImportReport]:
+                     mapping: dict[str, str] | None = None, assume_tz: str | None = None,
+                     constants: dict[str, Any] | None = None
+                     ) -> tuple[list[CellObservation], ImportReport]:
     data = json.loads(text)
     if isinstance(data, dict):
         data = data.get("observations", [])
     if not isinstance(data, list) or not all(isinstance(r, dict) for r in data):
         raise ValueError("le JSON doit contenir une liste d'objets d'observation")
-    return parse_records(data, provenance, source_name, mapping, assume_tz)
+    return parse_records(data, provenance, source_name, mapping, assume_tz, constants)
 
 
-def import_file(path: str | Path, provenance: Provenance, mapping: dict[str, str] | None = None,
-                assume_tz: str | None = None) -> tuple[list[CellObservation], ImportReport]:
+def read_records(path: str | Path) -> list[dict[str, Any]]:
+    """Lit les enregistrements bruts d'un fichier CSV/JSON (sans interprétation)."""
     p = Path(path)
     text = p.read_text(encoding="utf-8-sig")
     if p.suffix.lower() == ".json":
-        return import_json_text(text, provenance, p.name, mapping, assume_tz)
+        data = json.loads(text)
+        data = data.get("observations", []) if isinstance(data, dict) else data
+        if not isinstance(data, list) or not all(isinstance(r, dict) for r in data):
+            raise ValueError("le JSON doit contenir une liste d'objets d'observation")
+        return data
     if p.suffix.lower() == ".csv":
-        return import_csv_text(text, provenance, p.name, mapping, assume_tz)
+        try:
+            dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
+        except csv.Error:
+            dialect = csv.excel
+        return list(csv.DictReader(io.StringIO(text), dialect=dialect))
+    raise ValueError(f"format non pris en charge : {p.suffix}")
+
+
+def import_file(path: str | Path, provenance: Provenance, mapping: dict[str, str] | None = None,
+                assume_tz: str | None = None, constants: dict[str, Any] | None = None
+                ) -> tuple[list[CellObservation], ImportReport]:
+    p = Path(path)
+    text = p.read_text(encoding="utf-8-sig")
+    if p.suffix.lower() == ".json":
+        return import_json_text(text, provenance, p.name, mapping, assume_tz, constants)
+    if p.suffix.lower() == ".csv":
+        return import_csv_text(text, provenance, p.name, mapping, assume_tz, constants)
     raise ValueError(f"format non pris en charge : {p.suffix}")

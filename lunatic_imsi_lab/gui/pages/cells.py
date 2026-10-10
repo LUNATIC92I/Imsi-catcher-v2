@@ -13,7 +13,7 @@ from lunatic_imsi_lab.gui.widgets import PlotWidget, RecordTable
 
 
 class ImportDialog(QDialog):
-    def __init__(self, parent, path: str) -> None:
+    def __init__(self, parent, path: str, profiles: dict | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Importer des observations")
         form = QFormLayout(self)
@@ -31,6 +31,17 @@ class ImportDialog(QDialog):
         form.addRow("Jeu de données", self.dataset)
         form.addRow("Autorisation", self.auth)
         form.addRow("Fuseau des dates sans fuseau", self.tz)
+        self.path = path
+        self.profiles = profiles or {}
+        self.profile = QComboBox()
+        for name, prof in self.profiles.items():
+            self.profile.addItem(f"{name} — {prof['label']}", name)
+        self.profile.currentIndexChanged.connect(self.update_preview)
+        form.addRow("Profil de mappage", self.profile)
+        self.preview = QLabel()
+        self.preview.setWordWrap(True)
+        self.preview.setObjectName("Muted")
+        form.addRow("Aperçu des colonnes", self.preview)
         note = QLabel("Les colonnes d'identifiants personnels (IMSI, IMEI, TMSI, MSISDN…) "
                       "sont supprimées automatiquement sans être lues.")
         note.setObjectName("Notice")
@@ -40,6 +51,31 @@ class ImportDialog(QDialog):
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
         form.addRow(bb)
+        self.ok_button = bb.button(QDialogButtonBox.Ok)
+        self.update_preview()
+
+    def update_preview(self, *_):
+        from lunatic_imsi_lab.importers.profiles import preview_file
+        if not self.profiles:
+            return
+        try:
+            pv = preview_file(self.path, self.profiles[self.profile.currentData()])
+        except Exception as exc:  # fichier illisible, profil invalide…
+            self.preview.setText(f"Lecture impossible : {exc}")
+            self.ok_button.setEnabled(False)
+            return
+        lines = [f"{pv.rows} ligne(s)"]
+        lines += [f"{c} ← {col}" for c, col in pv.resolved.items()]
+        lines += [f"{c} = {v} (constante)" for c, v in pv.constants.items()]
+        if pv.dropped:
+            lines.append("Supprimées (identifiants personnels) : " + ", ".join(pv.dropped))
+        if pv.unused:
+            lines.append("Ignorées : " + ", ".join(pv.unused))
+        lines += pv.warnings
+        if not pv.ok:
+            lines.append("CHAMPS OBLIGATOIRES MANQUANTS : " + ", ".join(pv.missing_required))
+        self.preview.setText("\n".join(lines))
+        self.ok_button.setEnabled(pv.ok)
 
 
 class CellsPage(Page):
@@ -134,7 +170,7 @@ class CellsPage(Page):
                                               "Observations (*.csv *.json)")
         if not path:
             return
-        dlg = ImportDialog(self, path)
+        dlg = ImportDialog(self, path, self.lab.import_profiles())
         if dlg.exec() != QDialog.Accepted:
             return
         if not dlg.source.text().strip():
@@ -143,7 +179,8 @@ class CellsPage(Page):
             return
         ds = dlg.dataset.text().strip() or "default"
         rep = self.win.guarded(self.lab.import_file, path, dlg.source.text().strip(), ds,
-                               dlg.auth.text().strip(), dlg.tz.currentText())
+                               dlg.auth.text().strip(), dlg.tz.currentText(),
+                               dlg.profile.currentData())
         if rep is None:
             return
         msg = (f"{rep.rows_imported} ligne(s) importée(s), {rep.rows_rejected} rejetée(s)."

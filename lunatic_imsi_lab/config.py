@@ -56,6 +56,9 @@ class AppConfig:
     operator_name: str = "analyste"
     operator_role: str = "analyst"
     authorization_ref: str = ""
+    rule_config: dict = field(default_factory=dict)      # voir detection.rules.RuleConfig
+    disabled_rules: list[str] = field(default_factory=list)
+    import_profiles: dict = field(default_factory=dict)  # profils de mappage personnalisés
 
     @property
     def db_path(self) -> Path:

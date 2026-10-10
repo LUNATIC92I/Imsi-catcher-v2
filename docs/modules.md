@@ -48,6 +48,13 @@ Colonnes reconnues (alias insensibles à la casse) :
 **avant** toute lecture des valeurs ; un mappage vers ces colonnes est refusé.
 Un fichier marqué `is_simulation=true` reste une SIMULATION à l'import.
 
+**Profils de mappage** (`profiles.py`) : `{"label", "columns": {champ: colonne},
+"constants": {champ: valeur}}`. Profils intégrés `auto`, `nr-3gpp`, `lte-only`, `gsm-only` ;
+profils personnalisés dans la configuration (`import_profiles`, admin) ou fichier JSON.
+Les constantes ne remplacent jamais une colonne présente. `preview_file` indique, sans
+importer, la colonne retenue pour chaque champ, les constantes, les colonnes supprimées ou
+ignorées et les champs obligatoires manquants.
+
 `importers/service.py` enchaîne : permission → `security.files.protect_import` (extension,
 taille, lien symbolique, copie en lecture seule nommée par SHA-256) → analyse → stockage →
 audit.
@@ -61,8 +68,9 @@ audit.
   par émission ; vide si < 5 balayages).
 - `receivers.py` : interface `Receiver` **sans aucune méthode d'émission** ;
   `SimulatedReceiver` ; `SoapyReceiver` (flux `SOAPY_SDR_RX` uniquement, PSD de Welch,
-  balayage par pas de 80 % de la bande échantillonnée, IQ non conservés, unité dBFS tant
-  qu'aucun offset d'étalonnage n'est fourni).
+  balayage par pas de 80 % de la bande échantillonnée, IQ non conservés, suppression de la
+  raie DC par interpolation (`suppress_dc`, `dc_bins` bins de part et d'autre), unité dBFS
+  tant qu'aucun offset d'étalonnage n'est fourni).
 
 ## `detection` — moteur heuristique
 
@@ -81,6 +89,13 @@ diffusés) et index secondaires.
 | R08 | Paramètres diffusés modifiés ; liste de voisines vide | 0,20 ; 0,25 |
 | R09 | Canal + code physique d'une cellule connue repris par une autre identité | 0,25 |
 | R10 | Variation spectrale inhabituelle (module radio) | 0,15–0,20 |
+
+Seuils (`RuleConfig`) : configurables et validés (plages admissibles `RULE_PARAM_LIMITS`),
+profils d'environnement `RULE_PROFILES` (`urbain`, `fixe`, `vehicule`, `rural`), règles
+désactivables. Modification via `Lab.update_rules` (permission `configure_rules`,
+administrateur), persistée dans la configuration et journalisée (avant / après). Les seuils,
+le profil et les règles désactivées figurent dans chaque `AnalysisResult` et rapport.
+Le plafond d'un indicateur isolé et les pondérations ne sont **pas** configurables.
 
 Agrégation (`engine.py`) par cellule : score = 1 − Π(1 − wᵢ) sur les règles **distinctes** ;
 **plafond de 0,40** si une seule règle ; ×0,5 si référence absente/courte ou observations

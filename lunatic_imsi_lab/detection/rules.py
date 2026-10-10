@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import abc
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import timedelta
 from typing import Sequence
 
@@ -23,6 +23,9 @@ from lunatic_imsi_lab.detection.baseline import Baseline
 
 @dataclass
 class RuleConfig:
+    """Seuils des règles. Le plafond de confiance d'un indicateur isolé et les
+    pondérations ne sont volontairement *pas* configurables (garde-fou)."""
+
     jump_db: float = 12.0                 # saut de puissance « brutal »
     jump_max_gap_s: float = 120.0         # écart max entre deux mesures comparées
     min_jumps: int = 3                    # nombre de sauts pour « répétés »
@@ -31,6 +34,63 @@ class RuleConfig:
     short_lived_max_s: float = 600.0      # cellule « éphémère »
     short_lived_min_span_s: float = 3600.0
     strong_signal_dbm: float = -70.0
+    profile: str = "urbain"
+
+    def to_dict(self) -> dict:
+        return {f.name: getattr(self, f.name) for f in fields(self)}
+
+    @classmethod
+    def from_dict(cls, data: dict | None) -> "RuleConfig":
+        """Construit et valide une configuration ; les clés inconnues sont ignorées."""
+        cfg = cls(**{k: v for k, v in (data or {}).items() if k in RULE_PARAM_LIMITS
+                     or k == "profile"})
+        cfg.validate()
+        return cfg
+
+    def validate(self) -> None:
+        for name, (lo, hi, _label, _unit) in RULE_PARAM_LIMITS.items():
+            value = getattr(self, name)
+            if not isinstance(value, (int, float)) or not lo <= value <= hi:
+                raise ValueError(f"paramètre de règle « {name} » hors plage [{lo}, {hi}] : "
+                                 f"{value!r}")
+        for name in ("min_jumps", "min_baseline_obs_per_cell"):
+            setattr(self, name, int(getattr(self, name)))
+        if self.short_lived_max_s >= self.short_lived_min_span_s:
+            raise ValueError("la durée « éphémère » doit être inférieure à la période minimale")
+
+    @classmethod
+    def for_profile(cls, name: str) -> "RuleConfig":
+        if name not in RULE_PROFILES:
+            raise ValueError(f"profil inconnu : {name}")
+        return cls.from_dict({**RULE_PROFILES[name]["params"], "profile": name})
+
+
+# Plages admissibles : nom -> (min, max, libellé, unité)
+RULE_PARAM_LIMITS: dict[str, tuple[float, float, str, str]] = {
+    "jump_db": (3.0, 40.0, "Amplitude d'un saut de puissance", "dB"),
+    "jump_max_gap_s": (1.0, 3600.0, "Écart max entre mesures comparées", "s"),
+    "min_jumps": (1, 50, "Nombre de sauts pour « répétés »", ""),
+    "excess_db": (3.0, 60.0, "Excès de puissance vs référence", "dB"),
+    "min_baseline_obs_per_cell": (1, 1000, "Mesures de référence min. par cellule", ""),
+    "short_lived_max_s": (10.0, 86400.0, "Durée max d'une cellule éphémère", "s"),
+    "short_lived_min_span_s": (60.0, 604800.0, "Période min. pour juger l'éphémère", "s"),
+    "strong_signal_dbm": (-120.0, -20.0, "Seuil de signal fort", "dBm"),
+}
+
+# Profils d'environnement. Les valeurs s'écartent des défauts là où le
+# contexte de mesure change la variabilité attendue.
+RULE_PROFILES: dict[str, dict] = {
+    "urbain": {"label": "Urbain, mesure piétonne (défaut)", "params": {}},
+    "fixe": {"label": "Point fixe en intérieur (variabilité faible)",
+             "params": {"jump_db": 8.0, "min_jumps": 3, "excess_db": 15.0,
+                        "strong_signal_dbm": -75.0}},
+    "vehicule": {"label": "Mesure embarquée en véhicule (forte variabilité)",
+                 "params": {"jump_db": 18.0, "min_jumps": 5, "jump_max_gap_s": 30.0,
+                            "excess_db": 25.0, "short_lived_max_s": 120.0}},
+    "rural": {"label": "Rural (cellules éloignées, signaux faibles)",
+              "params": {"strong_signal_dbm": -80.0, "excess_db": 18.0,
+                         "short_lived_max_s": 900.0}},
+}
 
 
 def _by_cell(observations: Sequence[CellObservation]) -> dict[tuple, list[CellObservation]]:
@@ -416,6 +476,10 @@ class RadioIdentityRule(Rule):
                     f"Identités de référence : {same_op[:5]}", 0.25))
         return out
 
+
+RULE_IDS = ("R01_UNKNOWN_CELL", "R02_PARAM_CHANGE", "R03_ISOLATED_AREA", "R04_POWER_ANOMALY",
+            "R05_TECH_DOWNGRADE", "R06_TEMPORAL", "R07_SPATIAL", "R08_BROADCAST",
+            "R09_RADIO_IDENTITY")
 
 DEFAULT_RULES = (UnknownCellRule, ParameterChangeRule, IsolatedAreaCodeRule, PowerAnomalyRule,
                  TechnologyDowngradeRule, TemporalAnomalyRule, SpatialAnomalyRule,

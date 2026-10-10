@@ -184,7 +184,7 @@ class MainWindow(QMainWindow):
         self._toast_timer.start(8000)
         getattr(log, "warning" if level != "info" else "info")(message)
 
-    def run_task(self, fn, on_done=None, label: str = "Traitement…") -> None:
+    def run_task(self, fn, on_done=None, label: str = "Traitement…", on_error=None) -> None:
         if self._busy:
             self.notify("Une tâche est déjà en cours.", "warn")
             return
@@ -201,6 +201,8 @@ class MainWindow(QMainWindow):
 
         def failed(msg: str):
             self._end_task()
+            if on_error:
+                on_error()
             first = msg.splitlines()[0]
             log.error(msg)
             if "PermissionDenied" in first:

@@ -1,6 +1,6 @@
 # Bilan des fonctionnalités opérationnelles et des limitations
 
-Version 0.1.0 — état vérifié par la suite de tests (`python -m pytest`, 134 tests) et par
+Version 0.1.0 — état vérifié par la suite de tests (`python -m pytest`, 158 tests) et par
 l'exécution de l'interface en mode hors écran.
 
 Légende : ✅ opérationnel et testé · 🟡 implémenté, non validé sur matériel réel ·
@@ -26,14 +26,19 @@ Légende : ✅ opérationnel et testé · 🟡 implémenté, non validé sur mat
 | Cartographie | Points de mesure, horodatages, niveaux, alertes, GPS vs estimé, hors ligne, GeoJSON | ✅ | `TestMapping` |
 | Rapports | PDF et HTML, 10 sections, faits / hypothèses séparés, aucune conclusion abusive | ✅ | `TestReports`, `examples/exemple_rapport.pdf` |
 | Sécurité | Journal d'audit chaîné, RBAC, protection des imports, suppression contrôlée | ✅ | `TestRbacAuditDeletion`, `TestFileProtection` |
-| IHM | 10 pages, filtres, tableaux triables, graphiques interactifs, notifications, progression | ✅ | `tests/test_gui.py` (hors écran) |
+| Configuration | Seuils de règles validés, profils d'environnement, règles désactivables (admin, audit, rapports) | ✅ | `tests/test_configuration.py` |
+| | Profils de mappage d'import, constantes, aperçu des colonnes | ✅ | `TestImportProfiles` |
+| | Suppression de la raie DC des récepteurs SDR | ✅ | `TestDcSuppression` (fonction testée ; chaîne SDR non testée sur matériel) |
+| IHM | 11 pages, filtres, tableaux triables, graphiques interactifs, notifications, progression | ✅ | `tests/test_gui.py` (hors écran) |
 | Fonctions offensives | Fausse station de base, interception, brouillage, émission, suivi | ⛔ | Exclues par conception ; `test_receive_only_interface`. |
 
 ## Limitations connues
 
 ### Analyse et détection
-- Les règles sont **heuristiques** ; leurs seuils (12 dB, 20 dB, −70 dBm, rayons de cellule,
-  durées) sont génériques et doivent être ajustés à chaque environnement. Les poids ont été
+- Les règles sont **heuristiques** ; leurs seuils par défaut et les profils
+  d'environnement sont génériques et doivent être ajustés à chaque environnement (page
+  « Règles de détection » ou commande `rules`). Les rayons de cellule de R07 ne sont pas
+  configurables. Les poids ont été
   calibrés sur les scénarios synthétiques, **pas sur des données de terrain**.
 - Seuls les paramètres exposés par l'outil source sont analysés. Les indicateurs
   protocolaires (algorithme de chiffrement négocié, demandes d'identité, rejets
@@ -47,8 +52,12 @@ Légende : ✅ opérationnel et testé · 🟡 implémenté, non validé sur mat
 ### Radio
 - Puissances SDR en dBFS tant qu'un offset d'étalonnage n'est pas saisi ; l'offset dépend
   du gain et de la fréquence.
-- Le balayage SoapySDR concatène des fenêtres de 80 % de la bande échantillonnée ; les
-  raies DC / images propres à certains récepteurs ne sont pas filtrées.
+- Le balayage SoapySDR concatène des fenêtres de 80 % de la bande échantillonnée ; la raie
+  DC est interpolée, mais les fréquences images propres à certains récepteurs ne sont pas
+  filtrées.
+- Les profils de mappage intégrés reposent sur des conventions de nommage génériques
+  (3GPP) ; aucun format propriétaire d'outil commercial n'est intégré : le déclarer comme
+  profil personnalisé.
 - Les conversions EARFCN couvrent les bandes LTE usuelles (1, 2, 3, 4, 5, 7, 8, 12, 13, 20,
   28, 38, 40, 41) ; UARFCN sans décalage de bande ; ARFCN 512–810 interprétés en DCS 1800
   par défaut (option PCS 1900 dans l'API).
@@ -76,12 +85,13 @@ Légende : ✅ opérationnel et testé · 🟡 implémenté, non validé sur mat
   GeoJSON permet la superposition dans un SIG hors ligne.
 
 ### Interface
-- Les opérations longues s'exécutent une par une en arrière-plan ; l'acquisition continue
-  s'exécute dans le thread graphique (un balayage SDR lent peut brièvement figer l'IHM).
+- Les opérations longues (dont chaque acquisition SDR) s'exécutent une par une en
+  arrière-plan ; en acquisition continue, un balayage plus lent que la période (1,5 s) fait
+  sauter les déclenchements intermédiaires.
 - Interface en français uniquement.
 
 ## Pistes d'évolution
-- Import de formats d'outils de diagnostic spécifiques (profils de mappage prédéfinis).
-- Seuils de règles configurables depuis l'IHM et profils d'environnement.
+- Éditeur de profils de mappage dans l'IHM (actuellement : configuration / fichier JSON).
+- Rayons de cellule (R07) configurables par technologie.
 - Étalonnage SDR assisté par fréquence.
 - Authentification locale et chiffrement de la base.

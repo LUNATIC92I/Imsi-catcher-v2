@@ -75,6 +75,14 @@ collecte et sur les graphiques). Pour exprimer des dBm :
    du récepteur (page Équipements). L'offset dépend du gain et de la fréquence : le
    déterminer pour chaque configuration utilisée.
 
+### Raie DC
+
+Les récepteurs à conversion directe (RTL-SDR, HackRF, USRP…) présentent une raie parasite
+au centre de chaque fenêtre d'acquisition. Elle est remplacée par interpolation sur
+`dc_bins` bins (2 par défaut, 0 pour désactiver) ; la valeur utilisée est enregistrée dans
+les paramètres de collecte (`dc_suppression_bins`). Une émission réelle exactement au
+centre d'une fenêtre serait atténuée : décaler la plage de balayage pour la vérifier.
+
 ### Bonnes pratiques de mesure
 
 - Position fixe et antenne fixe pour les mesures de référence ; noter l'orientation.

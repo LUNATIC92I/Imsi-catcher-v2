@@ -24,7 +24,7 @@ from lunatic_imsi_lab.core.models import (Alert, CellObservation, ConfidenceLeve
                                           Severity)
 from lunatic_imsi_lab.core.timeutils import utcnow
 from lunatic_imsi_lab.detection.baseline import Baseline
-from lunatic_imsi_lab.detection.rules import DEFAULT_RULES, Rule, RuleConfig
+from lunatic_imsi_lab.detection.rules import DEFAULT_RULES, RULE_IDS, Rule, RuleConfig
 from lunatic_imsi_lab.radio.spectrum import PowerVariation
 
 SINGLE_INDICATOR_CAP = 0.40
@@ -71,6 +71,8 @@ class AnalysisResult:
     observation_count: int = 0
     baseline_summary: dict = field(default_factory=dict)
     is_simulation: bool = False
+    rule_config: dict = field(default_factory=dict)
+    disabled_rules: list[str] = field(default_factory=list)
 
 
 def _severity(score: float) -> Severity:
@@ -115,16 +117,23 @@ def spectrum_indicators(variations: Sequence[PowerVariation],
 
 class DetectionEngine:
     def __init__(self, rules: Sequence[Rule] | None = None,
-                 config: RuleConfig | None = None) -> None:
+                 config: RuleConfig | None = None,
+                 disabled_rules: Sequence[str] = ()) -> None:
         self.config = config or RuleConfig()
-        self.rules = list(rules) if rules is not None else [r(self.config) for r in DEFAULT_RULES]
+        self.disabled_rules = sorted(set(disabled_rules))
+        unknown = set(self.disabled_rules) - set(RULE_IDS) - {"R10_SPECTRUM_POWER"}
+        if unknown:
+            raise ValueError(f"règles inconnues : {sorted(unknown)}")
+        candidates = list(rules) if rules is not None else [r(self.config) for r in DEFAULT_RULES]
+        self.rules = [r for r in candidates if r.rule_id not in self.disabled_rules]
 
     def run(self, observations: Sequence[CellObservation], baseline: Baseline | None = None,
             extra_indicators: Sequence[Indicator] = ()) -> AnalysisResult:
         baseline = baseline or Baseline()
         observations = sorted(observations, key=lambda o: o.timestamp)
         is_sim = any(o.provenance.is_simulation for o in observations)
-        indicators: list[Indicator] = list(extra_indicators)
+        indicators: list[Indicator] = [i for i in extra_indicators
+                                       if i.rule_id not in self.disabled_rules]
         for rule in self.rules:
             indicators.extend(rule.evaluate(observations, baseline))
 
@@ -135,9 +144,13 @@ class DetectionEngine:
         elif baseline.observation_count < MIN_BASELINE_OBSERVATIONS:
             data_quality.append(f"Référence courte ({baseline.observation_count} mesures < "
                                 f"{MIN_BASELINE_OBSERVATIONS}) : confiance réduite.")
+        if self.disabled_rules:
+            data_quality.append("Règles désactivées par la configuration : "
+                                + ", ".join(self.disabled_rules) + ".")
         if len(observations) < MIN_OBSERVATIONS:
             data_quality.append(f"Peu d'observations ({len(observations)} < {MIN_OBSERVATIONS}).")
-        quality_factor = 0.5 if data_quality else 1.0
+        insufficient = [q for q in data_quality if not q.startswith("Règles désactivées")]
+        quality_factor = 0.5 if insufficient else 1.0
 
         obs_index = {o.id: o for o in observations}
         groups: dict[object, list[Indicator]] = defaultdict(list)
@@ -190,7 +203,7 @@ class DetectionEngine:
                 is_simulation=is_sim or any(i.is_simulation for i in inds), indicators=inds))
         alerts.sort(key=lambda a: (-a.priority, a.first_seen))
 
-        if data_quality and (baseline.is_empty or len(observations) < MIN_OBSERVATIONS):
+        if insufficient and (baseline.is_empty or len(observations) < MIN_OBSERVATIONS):
             assessment = Assessment.INSUFFICIENT_DATA
         elif not alerts or all(a.severity == Severity.INFO for a in alerts):
             assessment = Assessment.NO_INDICATOR
@@ -201,4 +214,6 @@ class DetectionEngine:
         return AnalysisResult(alerts=alerts, indicators=indicators, assessment=assessment,
                               assessment_text=Assessment.TEXT[assessment],
                               data_quality=data_quality, observation_count=len(observations),
-                              baseline_summary=baseline.summary(), is_simulation=is_sim)
+                              baseline_summary=baseline.summary(), is_simulation=is_sim,
+                              rule_config=self.config.to_dict(),
+                              disabled_rules=list(self.disabled_rules))

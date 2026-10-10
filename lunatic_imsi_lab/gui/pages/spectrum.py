@@ -119,6 +119,8 @@ class SpectrumPage(Page):
         return self._receivers[key]
 
     def acquire(self) -> None:
+        if self.win._busy:          # acquisition continue : un balayage est encore en cours
+            return
         if not self.lab.user.can(Permission.CAPTURE):
             self.btn_live.setChecked(False)
             self.win.guarded(self.lab.user.require, Permission.CAPTURE)  # affiche le refus
@@ -137,18 +139,24 @@ class SpectrumPage(Page):
         if stop <= start:
             self.win.notify("La fréquence de fin doit être supérieure au début.", "warn")
             return
-        sweep = self.win.guarded(rx.sweep, start, stop, self.bin.value() * 1e3)
-        if sweep is None:
-            self.btn_live.setChecked(False)
-            return
-        ws = self.lab.ws
-        ws.sweeps.append(sweep)
-        self.lab.db.add_sweep(sweep, ws.dataset or ("SIMULATION-spectre" if
-                                                    sweep.provenance.is_simulation else
-                                                    "spectre"))
-        self.lab.audit.record(self.lab.user, "capture_sweep", {
-            "source": sweep.provenance.source, "start_hz": start, "stop_hz": stop})
-        self.show_index(len(ws.sweeps) - 1)
+        bin_hz = self.bin.value() * 1e3
+        lab = self.lab
+
+        def job():
+            # Exécuté hors du thread graphique : lecture SDR et écriture en base.
+            sweep = rx.sweep(start, stop, bin_hz)
+            lab.db.add_sweep(sweep, lab.ws.dataset or (
+                "SIMULATION-spectre" if sweep.provenance.is_simulation else "spectre"))
+            lab.audit.record(lab.user, "capture_sweep", {
+                "source": sweep.provenance.source, "start_hz": start, "stop_hz": stop})
+            return sweep
+
+        def done(sweep):
+            lab.ws.sweeps.append(sweep)
+            self.show_index(len(lab.ws.sweeps) - 1)
+
+        self.win.run_task(job, done, "Acquisition…", on_error=lambda: self.btn_live.setChecked(
+            False))
 
     def toggle_live(self, on: bool) -> None:
         self.timer.start() if on else self.timer.stop()

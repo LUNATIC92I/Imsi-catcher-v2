@@ -16,7 +16,9 @@ from lunatic_imsi_lab.core.timeutils import utcnow
 from lunatic_imsi_lab.correlation import analysis as corr
 from lunatic_imsi_lab.detection.baseline import Baseline
 from lunatic_imsi_lab.detection.engine import AnalysisResult, DetectionEngine, spectrum_indicators
+from lunatic_imsi_lab.detection.rules import RuleConfig
 from lunatic_imsi_lab.importers.cells import ImportReport
+from lunatic_imsi_lab.importers.profiles import BUILTIN_PROFILES, all_profiles, validate_profile
 from lunatic_imsi_lab.importers.service import import_observations_file
 from lunatic_imsi_lab.radio.spectrum import detect_power_variations
 from lunatic_imsi_lab.reports.builder import ReportInput, build_report
@@ -56,8 +58,27 @@ class Lab:
         self.db = db or Database(self.config.db_path)
         self.audit = AuditLog(self.db)
         self.user = user or User(self.config.operator_name, Role(self.config.operator_role))
-        self.engine = DetectionEngine()
+        self.engine = self._make_engine()
         self.ws = Workspace()
+
+    def _make_engine(self) -> DetectionEngine:
+        return DetectionEngine(config=RuleConfig.from_dict(self.config.rule_config),
+                               disabled_rules=self.config.disabled_rules)
+
+    def update_rules(self, params: dict, disabled_rules: Sequence[str] = ()) -> RuleConfig:
+        """Modifie les seuils de détection (administrateur, journalisé, persistant)."""
+        self.user.require(Permission.CONFIGURE_RULES)
+        new = RuleConfig.from_dict(params)          # valide avant toute modification
+        engine = DetectionEngine(config=new, disabled_rules=disabled_rules)
+        before = {"rules": self.engine.config.to_dict(), "disabled": self.engine.disabled_rules}
+        self.engine = engine
+        self.config.rule_config = new.to_dict()
+        self.config.disabled_rules = list(engine.disabled_rules)
+        self.config.save()
+        self.audit.record(self.user, "update_rules", {
+            "before": before, "after": {"rules": new.to_dict(),
+                                        "disabled": engine.disabled_rules}})
+        return new
 
     # -- simulation ---------------------------------------------------------
     def run_simulation(self, params: SimulationParams, with_spectrum: bool = True,
@@ -96,13 +117,35 @@ class Lab:
         return res
 
     # -- import ---------------------------------------------------------------
+    def import_profiles(self) -> dict[str, dict]:
+        return all_profiles(self.config.import_profiles)
+
     def import_file(self, path: str | Path, source: str, dataset: str,
-                    authorization_ref: str = "", assume_tz: str | None = None) -> ImportReport:
-        report = import_observations_file(
+                    authorization_ref: str = "", assume_tz: str | None = None,
+                    profile: str | dict | None = None) -> ImportReport:
+        """``profile`` : nom d'un profil (intégré ou personnalisé) ou profil explicite."""
+        if isinstance(profile, str) and profile:
+            profiles = self.import_profiles()
+            if profile not in profiles:
+                raise ValueError(f"profil d'import inconnu : {profile}")
+            name, prof = profile, profiles[profile]
+        elif isinstance(profile, dict):
+            name, prof = "fichier", validate_profile(profile)
+        else:
+            name, prof = "auto", BUILTIN_PROFILES["auto"]
+        return import_observations_file(
             self.db, self.audit, self.user, path, self.config.vault_dir, source=source,
             dataset=dataset, authorization_ref=authorization_ref or self.config.authorization_ref,
-            assume_tz=assume_tz)
-        return report
+            assume_tz=assume_tz, mapping=prof["columns"], constants=prof["constants"],
+            profile_name=name)
+
+    def save_import_profile(self, name: str, profile: dict) -> None:
+        self.user.require(Permission.CONFIGURE_DEVICES)
+        if not name or name in BUILTIN_PROFILES:
+            raise ValueError("nom de profil invalide ou réservé")
+        self.config.import_profiles[name] = validate_profile(profile)
+        self.config.save()
+        self.audit.record(self.user, "save_import_profile", {"name": name, **profile})
 
     def load(self, dataset: str, baseline_dataset: str = "") -> Workspace:
         self.user.require(Permission.VIEW)

@@ -24,7 +24,7 @@ from lunatic_imsi_lab.core.models import CellObservation, SpectrumSweep
 from lunatic_imsi_lab.core.timeutils import utcnow
 from lunatic_imsi_lab.correlation.frames import cell_statistics
 from lunatic_imsi_lab.detection.engine import AnalysisResult, Assessment
-from lunatic_imsi_lab.detection.rules import DEFAULT_RULES
+from lunatic_imsi_lab.detection.rules import DEFAULT_RULES, RULE_PARAM_LIMITS, RULE_PROFILES
 from lunatic_imsi_lab.radio.spectrum import detect_emissions
 from lunatic_imsi_lab.reports import charts
 
@@ -189,6 +189,16 @@ def build_report(inp: ReportInput) -> ReportContent:
                                                                    "Alertes"]] + [
         [r, names.get(r, r), str(n)] for r, n in sorted(triggered.items())]
         if triggered else None, paragraphs=[] if triggered else ["Aucune règle déclenchée."]))
+    rc = res.rule_config
+    if rc:
+        profile = RULE_PROFILES.get(rc.get("profile", ""), {}).get("label", rc.get("profile"))
+        sections[-1].paragraphs.append(f"Profil de seuils : {profile}.")
+        sections[-1].bullets += [
+            f"{label} : {rc[k]}{(' ' + unit) if unit else ''}"
+            for k, (_lo, _hi, label, unit) in RULE_PARAM_LIMITS.items() if k in rc]
+    if res.disabled_rules:
+        sections[-1].paragraphs.append("Règles désactivées : " + ", ".join(res.disabled_rules)
+                                       + ". Les phénomènes correspondants n'ont pas été évalués.")
 
     # 8. Limites
     sections.append(ReportSection("8. Limites de l'analyse", bullets=LIMITATIONS

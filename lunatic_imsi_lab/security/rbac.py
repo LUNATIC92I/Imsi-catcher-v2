@@ -20,6 +20,7 @@ class Permission(str, Enum):
     EXPORT = "export"
     REPORT = "report"
     CONFIGURE_DEVICES = "configure_devices"
+    CONFIGURE_RULES = "configure_rules"      # seuils de détection (admin)
     CAPTURE = "capture"              # réception SDR réelle
     DELETE_DATA = "delete_data"
     VIEW_AUDIT = "view_audit"

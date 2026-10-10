@@ -83,6 +83,7 @@ def test_simulation_workflow_through_gui(qapp, tmp_config, boxes):
     spec = page(win, "SpectrumPage")
     n = len(lab.ws.sweeps)
     spec.acquire()
+    wait_idle(qapp, win)
     assert len(lab.ws.sweeps) == n + 1 and spec.emissions.model.rowCount() >= 3
 
     # Rapport via la page Rapports
@@ -105,3 +106,36 @@ def test_viewer_restrictions(qapp, tmp_config, boxes):
     console = page(win, "ConsolePage")
     assert "réservée" in console.integrity.text()
     win.close()
+
+
+def test_rules_page(qapp, tmp_config, boxes):
+    analyst_win = MainWindow(Lab(tmp_config))
+    rules = page(analyst_win, "RulesPage")
+    assert not rules.apply_btn.isEnabled() and "réservée" in rules.status.text()
+    analyst_win.close()
+
+    lab = Lab(tmp_config, User("root", Role.ADMIN))
+    win = MainWindow(lab)
+    rules = page(win, "RulesPage")
+    assert rules.apply_btn.isEnabled()
+    rules.profile.setCurrentIndex(rules.profile.findData("vehicule"))
+    rules.load_profile()
+    assert rules.inputs["jump_db"].value() == 18.0
+    rules.checks["R07_SPATIAL"].setChecked(False)
+    rules.apply()
+    wait_idle(qapp, win)
+    assert lab.engine.config.profile == "vehicule"
+    assert lab.engine.disabled_rules == ["R07_SPATIAL"]
+    win.close()
+
+
+def test_import_dialog_preview(qapp, tmp_config, tmp_path, boxes):
+    from lunatic_imsi_lab.gui.pages.cells import ImportDialog
+    p = tmp_path / "nr.csv"
+    p.write_text("Time;NCI;NR-ARFCN;SS-RSRP;IMSI\n2026-01-15T10:00:00Z;1;636666;-90;0010100\n")
+    lab = Lab(tmp_config)
+    dlg = ImportDialog(None, str(p), lab.import_profiles())
+    assert not dlg.ok_button.isEnabled() and "MANQUANTS" in dlg.preview.text()
+    dlg.profile.setCurrentIndex(dlg.profile.findData("nr-3gpp"))
+    assert dlg.ok_button.isEnabled()
+    assert "IMSI" in dlg.preview.text() and "0010100" not in dlg.preview.text()

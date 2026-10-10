@@ -18,13 +18,17 @@ def import_observations_file(db: Database, audit: AuditLog, user: User, path: st
                              vault_dir: str | Path, source: str, method: str = "import-file",
                              dataset: str = "default", authorization_ref: str = "",
                              mapping: dict[str, str] | None = None,
-                             assume_tz: str | None = None) -> ImportReport:
+                             assume_tz: str | None = None,
+                             constants: dict | None = None,
+                             profile_name: str = "") -> ImportReport:
     user.require(Permission.IMPORT)
     protected = protect_import(path, vault_dir)
     prov = Provenance(source=source, method=method, is_simulation=False,
                       parameters={"file": protected.original_name, "sha256": protected.sha256,
-                                  "authorization_ref": authorization_ref})
-    observations, report = import_file(protected.stored_path, prov, mapping, assume_tz)
+                                  "authorization_ref": authorization_ref,
+                                  "import_profile": profile_name or "auto"})
+    observations, report = import_file(protected.stored_path, prov, mapping, assume_tz,
+                                       constants)
     db.ensure_dataset(dataset, authorization_ref=authorization_ref)
     db.add_observations(observations, dataset)
     with db.session() as s, s.begin():
@@ -36,5 +40,5 @@ def import_observations_file(db: Database, audit: AuditLog, user: User, path: st
     audit.record(user, "import_observations", {
         "file": protected.original_name, "sha256": protected.sha256, "dataset": dataset,
         "imported": report.rows_imported, "rejected": report.rows_rejected,
-        "dropped_fields": report.dropped_fields})
+        "dropped_fields": report.dropped_fields, "profile": profile_name or "auto"})
     return report

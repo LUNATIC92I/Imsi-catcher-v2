@@ -68,14 +68,77 @@ def cmd_simulate(args) -> int:
 
 def cmd_import(args) -> int:
     lab = _lab(args)
+    profile = args.profile
+    if args.profile_file:
+        from lunatic_imsi_lab.importers.profiles import load_profile_file
+        profile = load_profile_file(args.profile_file)
     rep = lab.import_file(args.file, source=args.source, dataset=args.dataset,
-                          authorization_ref=args.authorization or "", assume_tz=args.tz)
+                          authorization_ref=args.authorization or "", assume_tz=args.tz,
+                          profile=profile)
     print(f"{rep.rows_imported} ligne(s) importée(s), {rep.rows_rejected} rejetée(s).")
     for w in rep.warnings[:20]:
         print(f"  avertissement : {w}")
     for e in rep.errors[:20]:
         print(f"  erreur : {e}")
     return 0 if rep.rows_imported else 1
+
+
+def cmd_preview(args) -> int:
+    from lunatic_imsi_lab.importers.profiles import load_profile_file, preview_file
+    lab = _lab(args)
+    profile = (load_profile_file(args.profile_file) if args.profile_file
+               else lab.import_profiles()[args.profile])
+    pv = preview_file(args.file, profile)
+    print(f"{pv.rows} ligne(s). Interprétation des colonnes :")
+    for canon, col in pv.resolved.items():
+        print(f"  {canon:15s} ← {col}")
+    for canon, val in pv.constants.items():
+        print(f"  {canon:15s} = {val!r} (constante du profil)")
+    if pv.dropped:
+        print("Colonnes d'identifiants personnels qui seront supprimées : " + ", ".join(pv.dropped))
+    if pv.unused:
+        print("Colonnes ignorées : " + ", ".join(pv.unused))
+    for w in pv.warnings:
+        print(f"Avertissement : {w}")
+    if not pv.ok:
+        print("Champs obligatoires manquants : " + ", ".join(pv.missing_required))
+        return 1
+    return 0
+
+
+def cmd_profiles(args) -> int:
+    lab = _lab(args)
+    for name, p in lab.import_profiles().items():
+        print(f"{name:12s} {p['label']}")
+    return 0
+
+
+def cmd_rules(args) -> int:
+    from lunatic_imsi_lab.detection.rules import RULE_IDS, RULE_PARAM_LIMITS, RULE_PROFILES, \
+        RuleConfig
+    lab = _lab(args)
+    if args.profile or args.set or args.disable is not None:
+        base = (RuleConfig.for_profile(args.profile).to_dict() if args.profile
+                else lab.engine.config.to_dict())
+        for item in args.set or []:
+            key, _, value = item.partition("=")
+            if key not in RULE_PARAM_LIMITS:
+                raise ValueError(f"paramètre inconnu : {key}")
+            base[key] = float(value)
+        disabled = ([r for r in args.disable.split(",") if r] if args.disable is not None
+                    else lab.engine.disabled_rules)
+        lab.update_rules(base, disabled)
+        print("Configuration des règles mise à jour.")
+    cfg = lab.engine.config
+    print(f"Profil : {cfg.profile} — {RULE_PROFILES.get(cfg.profile, {}).get('label', '')}")
+    for key, (lo, hi, label, unit) in RULE_PARAM_LIMITS.items():
+        print(f"  {key:26s} = {getattr(cfg, key):>9} {unit:4s} [{lo} … {hi}]  {label}")
+    print("Règles actives : " + ", ".join(r for r in RULE_IDS
+                                          if r not in lab.engine.disabled_rules))
+    if lab.engine.disabled_rules:
+        print("Règles désactivées : " + ", ".join(lab.engine.disabled_rules))
+    print("Profils disponibles : " + ", ".join(RULE_PROFILES))
+    return 0
 
 
 def cmd_analyze(args) -> int:
@@ -168,7 +231,24 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--dataset", default="default")
     s.add_argument("--authorization", help="référence de l'autorisation de mesure")
     s.add_argument("--tz", help="fuseau des horodatages naïfs (ex. Europe/Paris)")
+    s.add_argument("--profile", default="auto", help="profil de mappage (voir « profiles »)")
+    s.add_argument("--profile-file", help="profil de mappage JSON")
     s.set_defaults(func=cmd_import)
+
+    s = sub.add_parser("preview", help="aperçu de l'interprétation des colonnes d'un fichier")
+    s.add_argument("file")
+    s.add_argument("--profile", default="auto")
+    s.add_argument("--profile-file")
+    s.set_defaults(func=cmd_preview)
+
+    s = sub.add_parser("profiles", help="lister les profils de mappage d'import")
+    s.set_defaults(func=cmd_profiles)
+
+    s = sub.add_parser("rules", help="afficher / modifier les seuils de détection (admin)")
+    s.add_argument("--profile", help="appliquer un profil d'environnement")
+    s.add_argument("--set", action="append", metavar="PARAM=VALEUR")
+    s.add_argument("--disable", help="liste des règles désactivées (vide pour aucune)")
+    s.set_defaults(func=cmd_rules)
 
     s = sub.add_parser("analyze", help="analyser un jeu de données")
     s.add_argument("--dataset", required=True)

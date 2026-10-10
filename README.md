@@ -10,7 +10,7 @@ compatibles avec un IMSI catcher, corrélation, cartographie hors ligne et rappo
 > (IMSI, IMEI, TMSI, MSISDN…), aucun décodage de trafic, aucun brouillage, aucun suivi de
 > personnes. L'outil ne conclut **jamais** à la présence certaine d'un IMSI catcher.
 
-![Statut](https://img.shields.io/badge/tests-134%20réussis-2f8bff) ![Python](https://img.shields.io/badge/python-3.12%2B-c0c7d1)
+![Statut](https://img.shields.io/badge/tests-158%20réussis-2f8bff) ![Python](https://img.shields.io/badge/python-3.12%2B-c0c7d1)
 
 ## Démarrage rapide
 
@@ -62,6 +62,19 @@ python -m lunatic_imsi_lab analyze --dataset site-A --baseline site-A-ref \
 Format d'import (CSV `,` `;` ou tabulation, ou JSON) : voir
 [`docs/modules.md`](docs/modules.md#importers--connecteur-dimport). Les colonnes
 d'identifiants personnels éventuellement présentes sont supprimées sans être lues.
+Pour un export dont les noms de colonnes ne sont pas reconnus automatiquement, utiliser un
+profil de mappage (`--profile nr-3gpp`, `lte-only`, `gsm-only` ou un fichier JSON via
+`--profile-file`) et vérifier d'abord l'interprétation avec `preview`.
+
+### Adapter les seuils à l'environnement
+
+```bash
+python -m lunatic_imsi_lab --role admin rules --profile fixe          # point fixe en intérieur
+python -m lunatic_imsi_lab --role admin rules --set jump_db=15        # ajustement fin
+```
+
+Profils : `urbain` (défaut), `fixe`, `vehicule`, `rural`. Le plafond de confiance d'un
+indicateur isolé et les pondérations restent fixes.
 
 ## Commandes
 
@@ -76,6 +89,9 @@ d'identifiants personnels éventuellement présentes sont supprimées sans être
 | `audit --verify` | Vérification de l'intégrité du journal d'audit chaîné |
 | `generate-synthetic DIR` | Régénère les jeux synthétiques reproductibles |
 | `devices` | Détection des récepteurs SoapySDR |
+| `preview FICHIER [--profile]` | Aperçu de l'interprétation des colonnes avant import |
+| `profiles` | Profils de mappage d'import disponibles |
+| `rules [--profile] [--set P=V] [--disable R..]` | Afficher / modifier les seuils de détection (admin) |
 
 Options globales : `--data-dir`, `--user`, `--role {viewer,analyst,admin}`, `-v`.
 
@@ -83,7 +99,7 @@ Options globales : `--data-dir`, `--user`, `--role {viewer,analyst,admin}`, `-v`
 
 Navigation latérale : tableau de bord · analyseur de spectre · explorateur de cellules ·
 anomalies · chronologie / corrélation · cartographie · laboratoire de simulation · console
-technique · rapports · équipements & configuration. Tableaux triables et filtrables,
+technique · rapports · règles de détection · équipements & configuration. Tableaux triables et filtrables,
 graphiques interactifs (zoom, déplacement, export), notifications dans la barre d'état,
 indicateur de progression pour les tâches de fond.
 

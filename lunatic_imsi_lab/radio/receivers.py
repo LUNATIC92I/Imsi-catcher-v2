@@ -54,6 +54,21 @@ def iq_to_psd_dbfs(iq: np.ndarray, sample_rate: float, nfft: int = 1024) -> tupl
     return freqs[order], 10.0 * np.log10(pxx)
 
 
+def suppress_dc(freqs: np.ndarray, power_db: np.ndarray, center_hz: float,
+                half_width_hz: float) -> np.ndarray:
+    """Remplace la raie parasite DC (fuite d'oscillateur local des récepteurs à
+    conversion directe) par une interpolation linéaire des bins voisins.
+
+    Renvoie une copie ; si la zone couvre tout le bloc, les données sont
+    renvoyées inchangées."""
+    p = np.array(power_db, dtype=float, copy=True)
+    mask = np.abs(np.asarray(freqs) - center_hz) <= half_width_hz
+    if not np.any(mask) or np.all(mask):
+        return p
+    p[mask] = np.interp(np.asarray(freqs)[mask], np.asarray(freqs)[~mask], p[~mask])
+    return p
+
+
 class SimulatedReceiver(Receiver):
     """Récepteur virtuel : génère des spectres synthétiques, n'émet rien."""
 
@@ -82,13 +97,14 @@ class SoapyReceiver(Receiver):
 
     def __init__(self, args: str = "", sample_rate: float = 2.4e6, gain_db: float = 30.0,
                  calibration_offset_db: float = 0.0, nfft: int = 1024,
-                 averages: int = 16) -> None:
+                 averages: int = 16, dc_bins: int = 2) -> None:
         self.args = args
         self.sample_rate = sample_rate
         self.gain_db = gain_db
         self.calibration_offset_db = calibration_offset_db
         self.nfft = nfft
         self.averages = averages
+        self.dc_bins = dc_bins          # 0 : pas de suppression de la raie DC
         self.name = f"SoapySDR({args or 'auto'})"
         self._dev = None
         self._soapy = None
@@ -146,6 +162,8 @@ class SoapyReceiver(Receiver):
             dev.closeStream(stream)
         f, p = iq_to_psd_dbfs(buf, self.sample_rate, self.nfft)
         del buf  # aucun IQ conservé
+        if self.dc_bins:
+            p = suppress_dc(f, p, 0.0, self.dc_bins * self.sample_rate / self.nfft)
         return f + center_hz, p + self.calibration_offset_db
 
     def sweep(self, start_hz: float, stop_hz: float, bin_hz: float = 25e3) -> SpectrumSweep:
@@ -165,7 +183,8 @@ class SoapyReceiver(Receiver):
                                       "nfft": self.nfft, "averages": self.averages,
                                       "calibration_offset_db": self.calibration_offset_db,
                                       "unit": "dBm" if self.calibration_offset_db else "dBFS",
-                                      "raw_iq_stored": False})
+                                      "raw_iq_stored": False,
+                                      "dc_suppression_bins": self.dc_bins})
         return SpectrumSweep(timestamp=utcnow(), frequencies_hz=grid, power_dbm=p_grid,
                              provenance=prov, rbw_hz=self.sample_rate / self.nfft)
 
@@ -179,5 +198,5 @@ def make_receiver(driver: str, **kwargs) -> Receiver:
     if driver == "soapy":
         return SoapyReceiver(**{k: v for k, v in kwargs.items()
                                 if k in ("args", "sample_rate", "gain_db",
-                                         "calibration_offset_db", "nfft", "averages")})
+                                         "calibration_offset_db", "nfft", "averages", "dc_bins")})
     raise ValueError(f"pilote inconnu : {driver}")
