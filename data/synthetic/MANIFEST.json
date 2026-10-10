@@ -1,0 +1,204 @@
+{
+  "label": "SIMULATION",
+  "seed": 42,
+  "datasets": [
+    {
+      "scenario": "normal",
+      "label": "Cellules normales",
+      "parameters": {
+        "seed": 42,
+        "scenario": "normal",
+        "start": "2026-01-15T08:00:00+00:00",
+        "baseline_hours": 2.0,
+        "duration_minutes": 120.0,
+        "interval_s": 60.0,
+        "n_cells": 6,
+        "mcc": 208,
+        "mnc": 10,
+        "center_lat": 48.8566,
+        "center_lon": 2.3522,
+        "shadowing_db": 4.0,
+        "anomaly_start_fraction": 0.4,
+        "anomaly_duration_fraction": 0.25,
+        "anomaly_power_dbm": -50.0,
+        "power_jump_db": 18.0
+      },
+      "reference": "sim_normal_reference.csv",
+      "observations": "sim_normal_observations.csv",
+      "events": [
+        "Environnement stable : aucune anomalie injectée."
+      ],
+      "expected_legitimate": true,
+      "anomalous_cell_keys": []
+    },
+    {
+      "scenario": "coverage_change",
+      "label": "Changement de couverture",
+      "parameters": {
+        "seed": 42,
+        "scenario": "coverage_change",
+        "start": "2026-01-15T08:00:00+00:00",
+        "baseline_hours": 2.0,
+        "duration_minutes": 120.0,
+        "interval_s": 60.0,
+        "n_cells": 6,
+        "mcc": 208,
+        "mnc": 10,
+        "center_lat": 48.8566,
+        "center_lon": 2.3522,
+        "shadowing_db": 4.0,
+        "anomaly_start_fraction": 0.4,
+        "anomaly_duration_fraction": 0.25,
+        "anomaly_power_dbm": -50.0,
+        "power_jump_db": 18.0
+      },
+      "reference": "sim_coverage_change_reference.csv",
+      "observations": "sim_coverage_change_observations.csv",
+      "events": [
+        "Affaiblissement progressif de la cellule 10022 (−25 dB) puis disparition : phénomène légitime de couverture."
+      ],
+      "expected_legitimate": true,
+      "anomalous_cell_keys": []
+    },
+    {
+      "scenario": "power_variation",
+      "label": "Variations de puissance",
+      "parameters": {
+        "seed": 42,
+        "scenario": "power_variation",
+        "start": "2026-01-15T08:00:00+00:00",
+        "baseline_hours": 2.0,
+        "duration_minutes": 120.0,
+        "interval_s": 60.0,
+        "n_cells": 6,
+        "mcc": 208,
+        "mnc": 10,
+        "center_lat": 48.8566,
+        "center_lon": 2.3522,
+        "shadowing_db": 4.0,
+        "anomaly_start_fraction": 0.4,
+        "anomaly_duration_fraction": 0.25,
+        "anomaly_power_dbm": -50.0,
+        "power_jump_db": 18.0
+      },
+      "reference": "sim_power_variation_reference.csv",
+      "observations": "sim_power_variation_observations.csv",
+      "events": [
+        "Sauts de puissance répétés (±18.0 dB) sur la cellule 10006."
+      ],
+      "expected_legitimate": false,
+      "anomalous_cell_keys": [
+        [
+          "LTE",
+          208,
+          10,
+          31010,
+          10006
+        ]
+      ]
+    },
+    {
+      "scenario": "parameter_change",
+      "label": "Changement de paramètres",
+      "parameters": {
+        "seed": 42,
+        "scenario": "parameter_change",
+        "start": "2026-01-15T08:00:00+00:00",
+        "baseline_hours": 2.0,
+        "duration_minutes": 120.0,
+        "interval_s": 60.0,
+        "n_cells": 6,
+        "mcc": 208,
+        "mnc": 10,
+        "center_lat": 48.8566,
+        "center_lon": 2.3522,
+        "shadowing_db": 4.0,
+        "anomaly_start_fraction": 0.4,
+        "anomaly_duration_fraction": 0.25,
+        "anomaly_power_dbm": -50.0,
+        "power_jump_db": 18.0
+      },
+      "reference": "sim_parameter_change_reference.csv",
+      "observations": "sim_parameter_change_observations.csv",
+      "events": [
+        "La cellule 10006 change de LAC/TAC (31010 → 31017) : réorganisation opérateur simulée."
+      ],
+      "expected_legitimate": false,
+      "anomalous_cell_keys": [
+        [
+          "LTE",
+          208,
+          10,
+          31017,
+          10006
+        ]
+      ]
+    },
+    {
+      "scenario": "inconsistent",
+      "label": "Observations incohérentes",
+      "parameters": {
+        "seed": 42,
+        "scenario": "inconsistent",
+        "start": "2026-01-15T08:00:00+00:00",
+        "baseline_hours": 2.0,
+        "duration_minutes": 120.0,
+        "interval_s": 60.0,
+        "n_cells": 6,
+        "mcc": 208,
+        "mnc": 10,
+        "center_lat": 48.8566,
+        "center_lon": 2.3522,
+        "shadowing_db": 4.0,
+        "anomaly_start_fraction": 0.4,
+        "anomaly_duration_fraction": 0.25,
+        "anomaly_power_dbm": -50.0,
+        "power_jump_db": 18.0
+      },
+      "reference": "sim_inconsistent_reference.csv",
+      "observations": "sim_inconsistent_observations.csv",
+      "events": [
+        "Horodatages dupliqués, une mesure datée de 1999 et une position estimée à 200 km : défauts de qualité de données."
+      ],
+      "expected_legitimate": false,
+      "anomalous_cell_keys": []
+    },
+    {
+      "scenario": "synthetic_anomaly",
+      "label": "Anomalie synthétique multi-indicateurs",
+      "parameters": {
+        "seed": 42,
+        "scenario": "synthetic_anomaly",
+        "start": "2026-01-15T08:00:00+00:00",
+        "baseline_hours": 2.0,
+        "duration_minutes": 120.0,
+        "interval_s": 60.0,
+        "n_cells": 6,
+        "mcc": 208,
+        "mnc": 10,
+        "center_lat": 48.8566,
+        "center_lon": 2.3522,
+        "shadowing_db": 4.0,
+        "anomaly_start_fraction": 0.4,
+        "anomaly_duration_fraction": 0.25,
+        "anomaly_power_dbm": -50.0,
+        "power_jump_db": 18.0
+      },
+      "reference": "sim_synthetic_anomaly_reference.csv",
+      "observations": "sim_synthetic_anomaly_observations.csv",
+      "events": [
+        "Cellule 2G inconnue à signal très fort, LAC inédit, canal/BSIC d'une cellule connue, liste de voisines vide, passage forcé 4G→2G : scénario synthétique multi-indicateurs."
+      ],
+      "expected_legitimate": false,
+      "anomalous_cell_keys": [
+        [
+          "GSM",
+          208,
+          10,
+          4242,
+          99001
+        ]
+      ]
+    }
+  ]
+}
