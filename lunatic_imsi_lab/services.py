@@ -24,6 +24,7 @@ from lunatic_imsi_lab.radio.spectrum import detect_power_variations
 from lunatic_imsi_lab.reports.builder import ReportInput, build_report
 from lunatic_imsi_lab.reports.render import write_html, write_pdf
 from lunatic_imsi_lab.security.audit import AuditLog
+from lunatic_imsi_lab.security.auth import AuthError, UserStore
 from lunatic_imsi_lab.security.deletion import delete_dataset
 from lunatic_imsi_lab.security.rbac import Permission, Role, User
 from lunatic_imsi_lab.simulation.cells import SimulationParams, SimulationResult, simulate
@@ -57,9 +58,49 @@ class Lab:
         Path(self.config.data_dir).mkdir(parents=True, exist_ok=True)
         self.db = db or Database(self.config.db_path)
         self.audit = AuditLog(self.db)
+        self.users = UserStore(self.db)
         self.user = user or User(self.config.operator_name, Role(self.config.operator_role))
+        if self.users.has_users() and not self.user.authenticated:
+            raise AuthError("des comptes existent : une authentification est requise")
         self.engine = self._make_engine()
         self.ws = Workspace()
+
+    @property
+    def auth_enabled(self) -> bool:
+        return self.users.has_users()
+
+    @classmethod
+    def login(cls, config: AppConfig, name: str, password: str) -> "Lab":
+        """Authentifie l'utilisateur et journalise la tentative (réussie ou non)."""
+        db = Database(config.db_path)
+        store, audit = UserStore(db), AuditLog(db)
+        try:
+            user = store.authenticate(name, password)
+        except AuthError as exc:
+            audit.record(User(name[:80] or "?", Role.VIEWER), "login_failed", str(exc))
+            raise
+        audit.record(user, "login", {"role": user.role.value})
+        return cls(config, user, db)
+
+    def add_user(self, name: str, role: Role, password: str) -> None:
+        bootstrap = not self.users.has_users()
+        self.users.add_user(self.user, name, Role(role), password)
+        self.audit.record(self.user, "add_user", {"name": name, "role": Role(role).value,
+                                                  "bootstrap": bootstrap})
+        if bootstrap:
+            # L'authentification est désormais obligatoire : la session non
+            # authentifiée en cours perd ses droits jusqu'à reconnexion.
+            self.user = User(self.user.name, Role.VIEWER)
+
+    def set_user_disabled(self, name: str, disabled: bool) -> None:
+        self.users.set_disabled(self.user, name, disabled)
+        self.audit.record(self.user, "disable_user" if disabled else "enable_user",
+                          {"name": name})
+
+    def change_password(self, name: str, new_password: str,
+                        old_password: str | None = None) -> None:
+        self.users.change_password(self.user, name, new_password, old_password)
+        self.audit.record(self.user, "change_password", {"name": name})
 
     def _make_engine(self) -> DetectionEngine:
         return DetectionEngine(config=RuleConfig.from_dict(self.config.rule_config),
@@ -146,6 +187,14 @@ class Lab:
         self.config.import_profiles[name] = validate_profile(profile)
         self.config.save()
         self.audit.record(self.user, "save_import_profile", {"name": name, **profile})
+
+    def delete_import_profile(self, name: str) -> None:
+        self.user.require(Permission.CONFIGURE_DEVICES)
+        if name not in self.config.import_profiles:
+            raise ValueError(f"profil personnalisé inconnu : {name}")
+        del self.config.import_profiles[name]
+        self.config.save()
+        self.audit.record(self.user, "delete_import_profile", {"name": name})
 
     def load(self, dataset: str, baseline_dataset: str = "") -> Workspace:
         self.user.require(Permission.VIEW)

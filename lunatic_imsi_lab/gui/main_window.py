@@ -167,7 +167,8 @@ class MainWindow(QMainWindow):
     def refresh_all(self) -> None:
         ws = self.lab.ws
         u = self.lab.user
-        self.user_label.setText(f"Opérateur : {u.name}\nRôle : {u.role.value}")
+        mode = "authentifié" if u.authenticated else "sans authentification"
+        self.user_label.setText(f"Opérateur : {u.name}\nRôle : {u.role.value}\n{mode}")
         sim = " · SIMULATION" if ws.is_simulation else ""
         self.ws_label.setText(f"{len(ws.observations)} obs. · {len(ws.sweeps)} balayages · "
                               f"{len(ws.result.alerts) if ws.result else 0} alertes{sim}")
@@ -222,6 +223,20 @@ class MainWindow(QMainWindow):
         self._busy = False
         self.progress.setVisible(False)
         self.statusBar().showMessage(f"Base : {self.lab.config.db_path}")
+
+    def try_action(self, fn, *args, **kwargs) -> bool:
+        """Comme ``guarded`` mais indique explicitement la réussite."""
+        failed = []
+        try:
+            fn(*args, **kwargs)
+        except PermissionError as exc:      # PermissionDenied, AuthError
+            QMessageBox.warning(self, "Permission refusée", str(exc))
+            failed.append(exc)
+        except Exception as exc:
+            log.exception("action")
+            self.notify(f"{type(exc).__name__}: {exc}", "error")
+            failed.append(exc)
+        return not failed
 
     def guarded(self, fn, *args, **kwargs):
         """Exécute une action courte en affichant les refus de permission."""

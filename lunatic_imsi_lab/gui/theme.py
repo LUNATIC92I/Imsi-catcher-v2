@@ -41,6 +41,7 @@ QPushButton:disabled {{ color: #555c68; }}
 QPushButton#Primary {{ background: {BLUE}; border-color: {BLUE}; color: white; font-weight: 600; }}
 QPushButton#Primary:hover {{ background: {BLUE_DARK}; }}
 QPushButton#Danger {{ border-color: {RED}; color: {RED}; }}
+QPushButton#Danger:disabled {{ border-color: {BORDER}; color: #555c68; }}
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit, QTextBrowser, QTextEdit,
 QDateTimeEdit {{ background: {PANEL}; border: 1px solid {BORDER}; border-radius: 4px;
                 padding: 4px; color: {SILVER}; selection-background-color: {BLUE}; }}

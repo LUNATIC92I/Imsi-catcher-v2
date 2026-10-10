@@ -14,6 +14,7 @@
 | Pas de suivi de personnes | La carte n'affiche que les positions de l'équipement de mesure. |
 | Pas de brouillage | Aucune fonction d'émission. |
 | Fonctionnement local | Base SQLite locale, aucune connexion réseau, pas de fond de carte en ligne. |
+| Contrôle d'accès | Comptes locaux nominatifs (recommandé dès qu'il y a plusieurs opérateurs) : chaque action du journal d'audit est alors attribuée à une personne authentifiée. |
 | Traçabilité | Journal d'audit chaîné, référence d'autorisation enregistrée par jeu de données et dans les rapports, empreintes SHA-256 des fichiers importés et des rapports. |
 | Minimisation et suppression | Suppression contrôlée (administrateur, motif, confirmation, écrasement des fichiers importés). |
 

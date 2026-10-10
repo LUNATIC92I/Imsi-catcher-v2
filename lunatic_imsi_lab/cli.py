@@ -13,6 +13,8 @@ Exemples ::
 from __future__ import annotations
 
 import argparse
+import getpass
+import os
 import json
 import logging
 import sys
@@ -20,7 +22,7 @@ from pathlib import Path
 
 from lunatic_imsi_lab import APP_NAME, __version__
 from lunatic_imsi_lab.config import AppConfig
-from lunatic_imsi_lab.security.rbac import Role, User
+from lunatic_imsi_lab.security.rbac import PermissionDenied, Role, User
 from lunatic_imsi_lab.simulation.cells import Scenario, SimulationParams
 
 
@@ -29,6 +31,17 @@ def _lab(args):
     cfg = AppConfig.load(Path(args.data_dir) / "config.json") if args.data_dir else AppConfig.load()
     if args.data_dir:
         cfg.data_dir = args.data_dir
+    from lunatic_imsi_lab.security.auth import UserStore
+    from lunatic_imsi_lab.storage.db import Database
+    if UserStore(Database(cfg.db_path)).has_users():
+        # Mode authentifié : le rôle vient du compte, jamais de la ligne de commande.
+        if not args.user:
+            raise PermissionDenied("des comptes existent : préciser --user (mot de passe via "
+                                   "la variable LUNATIC_PASSWORD ou saisi au clavier)")
+        if args.role:
+            print("Avertissement : --role est ignoré en mode authentifié.", file=sys.stderr)
+        password = os.environ.get("LUNATIC_PASSWORD") or getpass.getpass("Mot de passe : ")
+        return Lab.login(cfg, args.user, password)
     user = User(args.user or cfg.operator_name, Role(args.role or cfg.operator_role))
     return Lab(cfg, user)
 
@@ -198,6 +211,42 @@ def cmd_devices(args) -> int:
     return 0
 
 
+def _new_password(prompt: str = "Nouveau mot de passe : ") -> str:
+    env = os.environ.get("LUNATIC_NEW_PASSWORD")
+    if env:
+        return env
+    first = getpass.getpass(prompt)
+    if first != getpass.getpass("Confirmer : "):
+        raise ValueError("les mots de passe ne correspondent pas")
+    return first
+
+
+def cmd_users(args) -> int:
+    lab = _lab(args)
+    if args.action == "list":
+        mode = "comptes actifs" if lab.auth_enabled else "AUCUN COMPTE (mode sans authentification)"
+        print(f"Authentification : {mode}")
+        for u in lab.users.list_users():
+            state = "désactivé" if u.disabled else "actif"
+            print(f"  {u.name:20s} {u.role:8s} {state}  créé le {u.created_at:%Y-%m-%d}")
+        return 0
+    if not args.name:
+        raise ValueError("nom de compte requis")
+    if args.action == "add":
+        lab.add_user(args.name, Role(args.new_role), _new_password())
+        print(f"Compte « {args.name} » créé ({args.new_role}).")
+    elif args.action == "passwd":
+        old = None
+        if args.name == lab.user.name:
+            old = os.environ.get("LUNATIC_PASSWORD") or getpass.getpass("Mot de passe actuel : ")
+        lab.change_password(args.name, _new_password(), old)
+        print("Mot de passe modifié.")
+    elif args.action in ("disable", "enable"):
+        lab.set_user_disabled(args.name, args.action == "disable")
+        print(f"Compte « {args.name} » {'désactivé' if args.action == 'disable' else 'réactivé'}.")
+    return 0
+
+
 def cmd_gui(args) -> int:
     from lunatic_imsi_lab.gui.app import run
     return run(data_dir=args.data_dir)
@@ -279,6 +328,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--seed", type=int, default=42)
     s.set_defaults(func=cmd_generate_synthetic)
 
+    s = sub.add_parser("users", help="gérer les comptes locaux (le premier doit être admin)")
+    s.add_argument("action", choices=["list", "add", "passwd", "disable", "enable"])
+    s.add_argument("name", nargs="?")
+    s.add_argument("--new-role", default="analyst", choices=[r.value for r in Role],
+                   help="rôle du compte créé")
+    s.set_defaults(func=cmd_users)
+
     s = sub.add_parser("devices", help="détecter les récepteurs SoapySDR")
     s.set_defaults(func=cmd_devices)
     return p
@@ -288,10 +344,9 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    from lunatic_imsi_lab.security.rbac import PermissionDenied
     try:
         return args.func(args)
-    except PermissionDenied as exc:
+    except PermissionError as exc:      # PermissionDenied et AuthError
         print(f"Permission refusée : {exc}", file=sys.stderr)
         return 3
     except (ValueError, FileNotFoundError) as exc:

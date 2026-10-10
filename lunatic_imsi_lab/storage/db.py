@@ -137,6 +137,21 @@ class ImportedFileRow(Base):
     dataset: Mapped[str] = mapped_column(String(100), ForeignKey("datasets.name"))
 
 
+class UserAccountRow(Base):
+    """Comptes locaux. Seule une empreinte PBKDF2 du mot de passe est stockée."""
+
+    __tablename__ = "user_accounts"
+    name: Mapped[str] = mapped_column(String(80), primary_key=True)
+    role: Mapped[str] = mapped_column(String(20))
+    salt: Mapped[str] = mapped_column(String(64))
+    password_hash: Mapped[str] = mapped_column(String(128))
+    iterations: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    disabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+
+
 class DatasetRow(Base):
     __tablename__ = "datasets"
     name: Mapped[str] = mapped_column(String(100), primary_key=True)

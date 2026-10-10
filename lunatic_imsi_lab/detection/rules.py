@@ -34,7 +34,16 @@ class RuleConfig:
     short_lived_max_s: float = 600.0      # cellule « éphémère »
     short_lived_min_span_s: float = 3600.0
     strong_signal_dbm: float = -70.0
+    radius_gsm_km: float = MAX_CELL_RADIUS_KM["GSM"]     # rayons plausibles (R07)
+    radius_umts_km: float = MAX_CELL_RADIUS_KM["UMTS"]
+    radius_lte_km: float = MAX_CELL_RADIUS_KM["LTE"]
+    radius_nr_km: float = MAX_CELL_RADIUS_KM["NR"]
     profile: str = "urbain"
+
+    def cell_radius_km(self, technology: str) -> float:
+        return {"GSM": self.radius_gsm_km, "UMTS": self.radius_umts_km,
+                "LTE": self.radius_lte_km, "NR": self.radius_nr_km}.get(
+            technology, max(self.radius_gsm_km, self.radius_lte_km))
 
     def to_dict(self) -> dict:
         return {f.name: getattr(self, f.name) for f in fields(self)}
@@ -75,6 +84,10 @@ RULE_PARAM_LIMITS: dict[str, tuple[float, float, str, str]] = {
     "short_lived_max_s": (10.0, 86400.0, "Durée max d'une cellule éphémère", "s"),
     "short_lived_min_span_s": (60.0, 604800.0, "Période min. pour juger l'éphémère", "s"),
     "strong_signal_dbm": (-120.0, -20.0, "Seuil de signal fort", "dBm"),
+    "radius_gsm_km": (0.5, 120.0, "Rayon plausible d'une cellule GSM", "km"),
+    "radius_umts_km": (0.5, 120.0, "Rayon plausible d'une cellule UMTS", "km"),
+    "radius_lte_km": (0.5, 120.0, "Rayon plausible d'une cellule LTE", "km"),
+    "radius_nr_km": (0.5, 120.0, "Rayon plausible d'une cellule NR", "km"),
 }
 
 # Profils d'environnement. Les valeurs s'écartent des défauts là où le
@@ -89,7 +102,8 @@ RULE_PROFILES: dict[str, dict] = {
                             "excess_db": 25.0, "short_lived_max_s": 120.0}},
     "rural": {"label": "Rural (cellules éloignées, signaux faibles)",
               "params": {"strong_signal_dbm": -80.0, "excess_db": 18.0,
-                         "short_lived_max_s": 900.0}},
+                         "short_lived_max_s": 900.0, "radius_gsm_km": 60.0,
+                         "radius_lte_km": 50.0, "radius_umts_km": 30.0}},
 }
 
 
@@ -385,7 +399,7 @@ class SpatialAnomalyRule(Rule):
             pts = [o for o in obs if o.has_position]
             if len(pts) < 2 and not (pts and key in baseline.cells):
                 continue
-            radius = MAX_CELL_RADIUS_KM.get(obs[0].technology.value, 35.0)
+            radius = self.config.cell_radius_km(obs[0].technology.value)
             max_d, estimated = 0.0, False
             for i, a in enumerate(pts):
                 for b in pts[i + 1:]:

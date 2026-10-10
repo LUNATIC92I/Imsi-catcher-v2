@@ -48,6 +48,8 @@ class ImportDialog(QDialog):
         note.setWordWrap(True)
         form.addRow(note)
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.button(QDialogButtonBox.Ok).setText("Importer")
+        bb.button(QDialogButtonBox.Cancel).setText("Annuler")
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
         form.addRow(bb)
@@ -97,6 +99,9 @@ class CellsPage(Page):
         bar.addWidget(QLabel("Statut"))
         bar.addWidget(self.status)
         bar.addStretch(1)
+        prof = QPushButton("Profils d'import…")
+        prof.clicked.connect(self.edit_profiles)
+        bar.addWidget(prof)
         imp = QPushButton("Importer CSV / JSON…")
         imp.setObjectName("Primary")
         imp.clicked.connect(self.import_file)
@@ -164,6 +169,10 @@ class CellsPage(Page):
             ax.set_ylabel("dBm")
             ax.grid(True, alpha=0.2)
         self.plot.draw()
+
+    def edit_profiles(self) -> None:
+        from lunatic_imsi_lab.gui.profile_editor import ProfileEditor
+        ProfileEditor(self.win).exec()
 
     def import_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Importer des observations", "",

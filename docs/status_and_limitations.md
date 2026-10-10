@@ -1,6 +1,6 @@
 # Bilan des fonctionnalités opérationnelles et des limitations
 
-Version 0.1.0 — état vérifié par la suite de tests (`python -m pytest`, 158 tests) et par
+Version 0.1.0 — état vérifié par la suite de tests (`python -m pytest`, 173 tests) et par
 l'exécution de l'interface en mode hors écran.
 
 Légende : ✅ opérationnel et testé · 🟡 implémenté, non validé sur matériel réel ·
@@ -29,7 +29,9 @@ Légende : ✅ opérationnel et testé · 🟡 implémenté, non validé sur mat
 | Configuration | Seuils de règles validés, profils d'environnement, règles désactivables (admin, audit, rapports) | ✅ | `tests/test_configuration.py` |
 | | Profils de mappage d'import, constantes, aperçu des colonnes | ✅ | `TestImportProfiles` |
 | | Suppression de la raie DC des récepteurs SDR | ✅ | `TestDcSuppression` (fonction testée ; chaîne SDR non testée sur matériel) |
-| IHM | 11 pages, filtres, tableaux triables, graphiques interactifs, notifications, progression | ✅ | `tests/test_gui.py` (hors écran) |
+| Sécurité | Comptes locaux (PBKDF2-SHA256, verrouillage, premier compte admin, dernier admin protégé), connexion obligatoire IHM/CLI, journalisation des connexions | ✅ | `tests/test_auth.py` |
+| Configuration | Éditeur graphique des profils d'import ; rayons de cellule R07 réglables | ✅ | `test_profile_editor`, `test_cell_radius_is_configurable` |
+| IHM | 12 pages, filtres, tableaux triables, graphiques interactifs, notifications, progression | ✅ | `tests/test_gui.py` (hors écran) |
 | Fonctions offensives | Fausse station de base, interception, brouillage, émission, suivi | ⛔ | Exclues par conception ; `test_receive_only_interface`. |
 
 ## Limitations connues
@@ -37,8 +39,8 @@ Légende : ✅ opérationnel et testé · 🟡 implémenté, non validé sur mat
 ### Analyse et détection
 - Les règles sont **heuristiques** ; leurs seuils par défaut et les profils
   d'environnement sont génériques et doivent être ajustés à chaque environnement (page
-  « Règles de détection » ou commande `rules`). Les rayons de cellule de R07 ne sont pas
-  configurables. Les poids ont été
+  « Règles de détection » ou commande `rules`). Les rayons de cellule de R07 sont réglables
+  par technologie. Les poids ont été
   calibrés sur les scénarios synthétiques, **pas sur des données de terrain**.
 - Seuls les paramètres exposés par l'outil source sont analysés. Les indicateurs
   protocolaires (algorithme de chiffrement négocié, demandes d'identité, rejets
@@ -69,16 +71,20 @@ Légende : ✅ opérationnel et testé · 🟡 implémenté, non validé sur mat
   réelles de détection.
 
 ### Sécurité
-- Le RBAC est **local** : le rôle provient de la configuration ou de la ligne de commande,
-  sans authentification. Il protège contre les erreurs de manipulation, pas contre un
-  utilisateur disposant des droits du système sur la base SQLite.
+- Tant qu'aucun compte n'est créé, l'application fonctionne **sans authentification**
+  (rôle issu de la configuration) et l'affiche. Après création du premier compte
+  (administrateur), la connexion est obligatoire en IHM comme en ligne de commande.
+- Les comptes protègent l'usage de l'application, pas les fichiers : un utilisateur
+  disposant des droits du système sur la base SQLite peut la lire ou la modifier
+  directement (seule l'altération du journal d'audit serait détectée).
 - Le journal d'audit détecte les altérations de la chaîne mais un administrateur système
   peut supprimer la base entière ; exporter régulièrement l'empreinte de la dernière
   entrée si une preuve externe est nécessaire.
 - L'écrasement avant suppression est « au mieux » : il n'offre pas de garantie sur SSD,
   systèmes de fichiers journalisés ou copies de sauvegarde. Préférer un chiffrement
   intégral du disque.
-- La base n'est pas chiffrée par l'application.
+- La base n'est pas chiffrée par l'application (SQLCipher nécessiterait une dépendance
+  native supplémentaire) : utiliser un chiffrement intégral du disque ou d'un volume dédié.
 
 ### Cartographie
 - Pas de fond de carte (fonctionnement hors ligne) : projection locale en km. L'export
@@ -88,10 +94,11 @@ Légende : ✅ opérationnel et testé · 🟡 implémenté, non validé sur mat
 - Les opérations longues (dont chaque acquisition SDR) s'exécutent une par une en
   arrière-plan ; en acquisition continue, un balayage plus lent que la période (1,5 s) fait
   sauter les déclenchements intermédiaires.
-- Interface en français uniquement.
+- Interface en français uniquement (traductions Qt françaises chargées pour les dialogues
+  standard).
 
 ## Pistes d'évolution
-- Éditeur de profils de mappage dans l'IHM (actuellement : configuration / fichier JSON).
-- Rayons de cellule (R07) configurables par technologie.
 - Étalonnage SDR assisté par fréquence.
-- Authentification locale et chiffrement de la base.
+- Chiffrement de la base (SQLCipher) en option.
+- Constantes de profil d'import autres que la technologie depuis l'éditeur graphique
+  (possibles via fichier JSON).

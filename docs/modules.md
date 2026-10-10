@@ -91,7 +91,8 @@ diffusés) et index secondaires.
 | R10 | Variation spectrale inhabituelle (module radio) | 0,15–0,20 |
 
 Seuils (`RuleConfig`) : configurables et validés (plages admissibles `RULE_PARAM_LIMITS`),
-profils d'environnement `RULE_PROFILES` (`urbain`, `fixe`, `vehicule`, `rural`), règles
+rayons plausibles par technologie pour R07, profils d'environnement `RULE_PROFILES`
+(`urbain`, `fixe`, `vehicule`, `rural`), règles
 désactivables. Modification via `Lab.update_rules` (permission `configure_rules`,
 administrateur), persistée dans la configuration et journalisée (avant / après). Les seuils,
 le profil et les règles désactivées figurent dans chaque `AnalysisResult` et rapport.
@@ -145,6 +146,12 @@ des rapports sont enregistrées.
 
 - `rbac.py` : rôles `viewer` (consultation), `analyst` (import, analyse, simulation,
   capture, export, rapports), `admin` (+ configuration, suppression, audit).
+- `auth.py` : comptes locaux (`UserStore`) — empreintes PBKDF2-HMAC-SHA256 salées
+  (600 000 itérations), politique de mot de passe (≥ 10 caractères, sans le nom), verrouillage
+  5 min après 5 échecs, premier compte obligatoirement administrateur, impossibilité de
+  désactiver le dernier administrateur. `Lab` refuse tout utilisateur non authentifié dès
+  qu'un compte existe ; `Lab.login` journalise réussites et échecs. Permission
+  `manage_users` (administrateur).
 - `audit.py` : journal chaîné SHA-256 ; `verify()` localise la première entrée altérée.
 - `files.py` : protection des imports, contrôle d'intégrité, écrasement avant suppression.
 - `deletion.py` : suppression d'un jeu (admin, motif ≥ 5 caractères, confirmation par le

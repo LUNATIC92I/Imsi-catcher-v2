@@ -139,3 +139,24 @@ def test_import_dialog_preview(qapp, tmp_config, tmp_path, boxes):
     dlg.profile.setCurrentIndex(dlg.profile.findData("nr-3gpp"))
     assert dlg.ok_button.isEnabled()
     assert "IMSI" in dlg.preview.text() and "0010100" not in dlg.preview.text()
+
+
+def test_profile_editor(qapp, tmp_config, boxes):
+    from lunatic_imsi_lab.gui.profile_editor import ProfileEditor
+    lab = Lab(tmp_config, User("root", Role.ADMIN))
+    win = MainWindow(lab)
+    ed = ProfileEditor(win)
+    ed.choice.setCurrentIndex(ed.choice.findData("builtin:nr-3gpp"))   # partir d'un modèle
+    assert ed.cols["rssi_dbm"].text() == "SS-RSRP" and ed.name.text() == ""
+    ed.name.setText("mon-outil")
+    ed.cols["rssi_dbm"].setText("RSRP_5G")
+    ed.save()
+    assert lab.config.import_profiles["mon-outil"]["columns"]["rssi_dbm"] == "RSRP_5G"
+    assert lab.config.import_profiles["mon-outil"]["constants"] == {"technology": "NR"}
+    ed.cols["cell_id"].setText("IMSI")                     # refusé
+    ed.save()
+    assert lab.config.import_profiles["mon-outil"]["columns"]["cell_id"] == "NCI"  # inchangé
+    ed.choice.setCurrentIndex(ed.choice.findData("mon-outil"))
+    ed.delete()
+    assert "mon-outil" not in lab.config.import_profiles
+    win.close()

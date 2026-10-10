@@ -209,3 +209,21 @@ class TestCli:
         prof.write_text(json.dumps(BUILTIN_PROFILES["nr-3gpp"]))
         assert main(["--data-dir", d, "import", str(p), "--source", "x", "--dataset", "nr",
                      "--profile-file", str(prof)]) == 0
+
+
+def test_cell_radius_is_configurable():
+    from datetime import datetime, timezone
+    from lunatic_imsi_lab.core.models import CellObservation, PositionKind
+    from lunatic_imsi_lab.detection.rules import SpatialAnomalyRule
+    t = datetime(2026, 1, 15, tzinfo=timezone.utc)
+
+    def ob(lat):
+        return CellObservation(t, Technology.LTE, 208, 10, 1, 1, 1300, Provenance("t", "t"),
+                               latitude=lat, longitude=2.35, position_kind=PositionKind.GPS)
+    obs = [ob(48.85), ob(49.40)]          # ≈ 61 km
+    assert SpatialAnomalyRule().evaluate(obs, Baseline())             # 61 > 2 × 30
+    assert not SpatialAnomalyRule(RuleConfig.from_dict({"radius_lte_km": 40})).evaluate(
+        obs, Baseline())
+    assert RuleConfig.for_profile("rural").cell_radius_km("GSM") == 60.0
+    with pytest.raises(ValueError):
+        RuleConfig.from_dict({"radius_nr_km": 0})

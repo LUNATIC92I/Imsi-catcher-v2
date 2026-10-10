@@ -24,6 +24,7 @@ class Permission(str, Enum):
     CAPTURE = "capture"              # réception SDR réelle
     DELETE_DATA = "delete_data"
     VIEW_AUDIT = "view_audit"
+    MANAGE_USERS = "manage_users"
 
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -43,6 +44,7 @@ class PermissionDenied(PermissionError):
 class User:
     name: str
     role: Role
+    authenticated: bool = False   # vrai uniquement si issu de security.auth
 
     def can(self, permission: Permission) -> bool:
         return permission in ROLE_PERMISSIONS[self.role]
